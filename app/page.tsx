@@ -137,6 +137,17 @@ export default function DyslexiaLearningApp() {
       {activeSection === "reading-fluency" && <ReadingFluencyTracker />}
       {activeSection === "peer-community" && <PeerCommunity />}
       {activeSection === "content-generator" && <AIContentGenerator />}
+      {activeSection === "ai-coach" && (
+        <div className="container mx-auto px-4 py-8">
+          <div className="h-[80vh] border rounded-lg overflow-hidden">
+            <iframe
+              src={process.env.NEXT_PUBLIC_AI_COACH_URL || "/ai-coach/index.html"}
+              className="w-full h-full"
+              title="Doc Summerizer"
+            />
+          </div>
+        </div>
+      )}
 
       {activeSection === "settings" && (
         <div className="container mx-auto px-4 py-8">
@@ -147,7 +158,10 @@ export default function DyslexiaLearningApp() {
                 <CardDescription>Test AI generation.</CardDescription>
               </CardHeader>
               <CardContent>
-                <Button onClick={() => setActiveSection("content-generator")}>Open Content Generator</Button>
+                <div className="flex gap-2 flex-wrap">
+                  <Button onClick={() => setActiveSection("content-generator")}>Open Content Generator</Button>
+                  <Button variant="secondary" onClick={() => setActiveSection("ai-coach")}>Open Doc Summerizer</Button>
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -624,7 +638,7 @@ export default function DyslexiaLearningApp() {
                 onClick={() => setActiveSection("ai-coach")}
               >
                 <span className="text-xl">🧠</span>
-                <span>AI Coach</span>
+                <span>Doc Summerizer</span>
               </Button>
               <Button
                 variant="outline"

@@ -35,6 +35,7 @@ export type SectionKey =
   | "ai-exam-prep"
   | "peer-community"
   | "content-generator"
+  | "ai-coach"
   | "settings"
 
 export default function SiteNavbar({
@@ -93,6 +94,9 @@ export default function SiteNavbar({
           </Button>
           <Button variant="ghost" size="sm" className="hover:bg-primary/10 hover:text-primary transition-colors" onClick={() => onNavigate("content-generator")}>
             <Sparkles className="h-4 w-4 mr-2" /> Content Generator
+          </Button>
+          <Button variant="ghost" size="sm" className="hover:bg-primary/10 hover:text-primary transition-colors" onClick={() => onNavigate("ai-coach")}>
+            <Sparkles className="h-4 w-4 mr-2" /> Doc Summerizer
           </Button>
           <Button variant="ghost" size="sm" className="hover:bg-primary/10 hover:text-primary transition-colors" onClick={() => onNavigate("parent")}>
             <UsersRound className="h-4 w-4 mr-2" /> Parent Portal
@@ -163,6 +167,7 @@ export default function SiteNavbar({
                     <DropdownMenuItem onClick={() => onNavigate("games")}>Games</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => onNavigate("voice-reading")}>Voice Reading</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => onNavigate("content-generator")}>Content Generator</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => onNavigate("ai-coach")}>Doc Summerizer</DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
 
