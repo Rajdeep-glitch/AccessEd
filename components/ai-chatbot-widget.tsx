@@ -53,39 +53,44 @@ export default function AIChatbotWidget() {
     setInputMessage("")
     setIsTyping(true)
 
-    // Simulate AI response
-    setTimeout(() => {
+    // Call backend API (Gemini)
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          // send short history for context
+          messages: [...messages, userMessage].slice(-10).map(m => ({
+            role: m.sender === 'user' ? 'user' : 'model',
+            content: m.content,
+          }))
+        })
+      })
+
+      const data = await res.json()
       const botResponse: Message = {
         id: (Date.now() + 1).toString(),
-        content: generateAIResponse(inputMessage),
-        sender: "bot",
+        content: data?.text || "Sorry, I couldn't generate a response right now.",
+        sender: 'bot',
         timestamp: new Date(),
       }
       setMessages((prev) => [...prev, botResponse])
+    } catch (err) {
+      const botResponse: Message = {
+        id: (Date.now() + 1).toString(),
+        content: 'There was an error contacting the AI service. Please try again.',
+        sender: 'bot',
+        timestamp: new Date(),
+      }
+      setMessages((prev) => [...prev, botResponse])
+    } finally {
       setIsTyping(false)
-    }, 1500)
+    }
   }
 
-  const generateAIResponse = (userInput: string): string => {
-    const input = userInput.toLowerCase()
-
-    if (input.includes("reading") || input.includes("read")) {
-      return "Great question about reading! For dyslexic learners, I recommend breaking words into syllables, using finger tracking, and reading aloud. Would you like me to suggest some specific reading exercises?"
-    }
-
-    if (input.includes("spelling") || input.includes("spell")) {
-      return "Spelling can be challenging, but there are great strategies! Try the look-say-cover-write-check method, use mnemonics, and practice with our Spelling Builder game. What specific words are you working on?"
-    }
-
-    if (input.includes("help") || input.includes("stuck")) {
-      return "I'm here to help! You can ask me about reading strategies, spelling tips, study techniques, or how to use any of the learning tools in the app. What would you like to work on?"
-    }
-
-    if (input.includes("game") || input.includes("fun")) {
-      return "Our learning games are designed to make practice enjoyable! Try Rhyme Radar for phonics, Memory Boost for working memory, or the Spelling Builder. Which type of activity interests you most?"
-    }
-
-    return "That's an interesting question! I can help you with reading strategies, spelling techniques, study tips, and using the learning tools. Could you tell me more about what you're trying to learn or improve?"
+  // Deprecated: canned responses replaced by Gemini backend.
+  const generateAIResponse = (_userInput: string): string => {
+    return ""
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {

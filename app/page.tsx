@@ -5,7 +5,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import StoryMode from "@/components/story-mode"
-import AILearningPath from "@/components/ai-learning-path"
 import RhymeRadarGame from "@/components/rhyme-radar-game"
 import MemoryBoostGame from "@/components/memory-boost-game"
 import VoiceReadingAssessment from "@/components/voice-reading-assessment"
@@ -14,14 +13,27 @@ import AIExamPrep from "@/components/ai-exam-prep"
 import AccessibilityToolbar from "@/components/accessibility-toolbar"
 import SpellingBuilder from "@/components/spelling-builder"
 import ReadingFluencyTracker from "@/components/reading-fluency-tracker"
-import FontSwitcher from "@/components/font-switcher"
 import { useState, useEffect } from "react"
 import Link from "next/link"
+import PeerCommunity from "@/components/peer-community"
+import SiteNavbar from "@/components/site-navbar"
+import AIContentGenerator from "@/components/ai-content-generator"
+import FontSwitcher from "@/components/font-switcher"
+import SimonSays from "@/components/simon-says"
+import SoundMatch from "@/components/sound-match"
+import StoryScramble from "@/components/story-scramble"
 
 export default function DyslexiaLearningApp() {
   const [activeSection, setActiveSection] = useState("dashboard")
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [user, setUser] = useState({ name: "Alex", type: "student" })
+  const [simonBest, setSimonBest] = useState<number | null>(null)
+  const [simonLevel, setSimonLevel] = useState<number | null>(null)
+  // New games: Sound Match & Story Scramble preview stats
+  const [soundBest, setSoundBest] = useState<number | null>(null)
+  const [soundLevel, setSoundLevel] = useState<number | null>(null)
+  const [scrambleCompleted, setScrambleCompleted] = useState<number | null>(null)
+  const [scrambleLevel, setScrambleLevel] = useState<number | null>(null)
 
   // Sync auth state with localStorage (set by /auth/signin)
   useEffect(() => {
@@ -34,6 +46,23 @@ export default function DyslexiaLearningApp() {
       if (storedUser) {
         setUser(JSON.parse(storedUser))
       }
+      // Load Simon Says stats for the card preview
+      const bs = parseInt(localStorage.getItem("simonSays.bestScore") || "", 10)
+      const lv = parseInt(localStorage.getItem("simonSays.level") || "", 10)
+      if (!Number.isNaN(bs)) setSimonBest(bs)
+      if (!Number.isNaN(lv)) setSimonLevel(lv)
+
+      // Load Sound Match preview stats
+      const smb = parseInt(localStorage.getItem("soundMatch.bestScore") || "", 10)
+      const sml = parseInt(localStorage.getItem("soundMatch.level") || "", 10)
+      if (!Number.isNaN(smb)) setSoundBest(smb)
+      if (!Number.isNaN(sml)) setSoundLevel(sml)
+
+      // Load Story Scramble preview stats
+      const ssc = parseInt(localStorage.getItem("storyScramble.completed") || "", 10)
+      const ssl = parseInt(localStorage.getItem("storyScramble.level") || "", 10)
+      if (!Number.isNaN(ssc)) setScrambleCompleted(ssc)
+      if (!Number.isNaN(ssl)) setScrambleLevel(ssl)
     } catch (e) {
       // noop for demo
     }
@@ -92,85 +121,38 @@ export default function DyslexiaLearningApp() {
       <AccessibilityToolbar />
 
       {/* Header */}
-      <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
-              <span className="text-xl">🧠</span>
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-balance">AccessEd</h1>
-              <p className="text-sm text-muted-foreground">Empowering Every Learner</p>
-            </div>
-          </div>
-          <nav className="hidden md:flex items-center space-x-6">
-            <Button
-              variant={activeSection === "dashboard" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setActiveSection("dashboard")}
-            >
-              Dashboard
-            </Button>
-            <Button
-              variant={activeSection === "story" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setActiveSection("story")}
-            >
-              Story Mode
-            </Button>
-            <Button
-              variant={activeSection === "ai-coach" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setActiveSection("ai-coach")}
-            >
-              AI Coach
-            </Button>
-            <Button
-              variant={activeSection === "games" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setActiveSection("games")}
-            >
-              Games
-            </Button>
-            <Button
-              variant={activeSection === "voice-reading" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setActiveSection("voice-reading")}
-            >
-              Voice Reading
-            </Button>
-            <Button
-              variant={activeSection === "parent" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setActiveSection("parent")}
-            >
-              Parent Portal
-            </Button>
-            <FontSwitcher />
-            <Button variant="outline" size="sm">
-              {user.name}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setIsAuthenticated(false)}>
-              Sign Out
-            </Button>
-            <Button
-              variant={activeSection === "ai-exam-prep" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setActiveSection("ai-exam-prep")}
-            >
-              Exam Prep
-            </Button>
-          </nav>
-        </div>
-      </header>
+      <SiteNavbar
+        activeSection={activeSection as any}
+        onNavigate={(key) => setActiveSection(key)}
+        user={user}
+        onSignOut={() => setIsAuthenticated(false)}
+      />
 
       {activeSection === "story" && <StoryMode />}
-      {activeSection === "ai-coach" && <AILearningPath />}
+
       {activeSection === "voice-reading" && <VoiceReadingAssessment />}
       {activeSection === "parent" && <ParentTeacherDashboard />}
       {activeSection === "ai-exam-prep" && <AIExamPrep />}
       {activeSection === "spelling-builder" && <SpellingBuilder />}
       {activeSection === "reading-fluency" && <ReadingFluencyTracker />}
+      {activeSection === "peer-community" && <PeerCommunity />}
+      {activeSection === "content-generator" && <AIContentGenerator />}
+
+      {activeSection === "settings" && (
+        <div className="container mx-auto px-4 py-8">
+          <div className="grid md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>AI</CardTitle>
+                <CardDescription>Test AI generation.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button onClick={() => setActiveSection("content-generator")}>Open Content Generator</Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
 
       {activeSection === "games" && (
         <div className="container mx-auto px-4 py-8">
@@ -180,6 +162,66 @@ export default function DyslexiaLearningApp() {
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mb-8">
+            {/* NEW: Sound Match */}
+            <Card
+              className="hover:shadow-md transition-shadow cursor-pointer"
+              onClick={() => setActiveSection("sound-match")}
+            >
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-indigo-500/10 rounded-xl flex items-center justify-center">
+                    <span className="text-2xl">🔊</span>
+                  </div>
+                  <div className="flex-1">
+                    <CardTitle className="text-lg">Sound Match</CardTitle>
+                    <CardDescription>
+                      Hear a sound — can you match it to the correct letter, word, or picture?
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2 mb-3">
+                  <Badge>High Score: {soundBest ?? "—"}</Badge>
+                  <Badge variant="outline">Level: {soundLevel ?? "—"}</Badge>
+                </div>
+                <Button className="w-full bg-indigo-500 text-white hover:bg-indigo-500/90">
+                  <span className="mr-2">▶️</span>
+                  Play Sound Match
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* NEW: Story Scramble */}
+            <Card
+              className="hover:shadow-md transition-shadow cursor-pointer"
+              onClick={() => setActiveSection("story-scramble")}
+            >
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center">
+                    <span className="text-2xl">📖</span>
+                  </div>
+                  <div className="flex-1">
+                    <CardTitle className="text-lg">Story Scramble</CardTitle>
+                    <CardDescription>
+                      A short story is broken into jumbled sentences. Arrange them in the right order!
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2 mb-3">
+                  <Badge>Stories Completed: {scrambleCompleted ?? "—"}</Badge>
+                  <Badge variant="outline">Level: {scrambleLevel ?? "—"}</Badge>
+                </div>
+                <Button className="w-full bg-amber-500 text-white hover:bg-amber-500/90">
+                  <span className="mr-2">▶️</span>
+                  Play Story Scramble
+                </Button>
+              </CardContent>
+            </Card>
+
             <Card
               className="hover:shadow-md transition-shadow cursor-pointer"
               onClick={() => setActiveSection("rhyme-radar")}
@@ -260,11 +302,45 @@ export default function DyslexiaLearningApp() {
                 </Button>
               </CardContent>
             </Card>
+
+            <Card
+              className="hover:shadow-md transition-shadow cursor-pointer"
+              onClick={() => setActiveSection("simon-says")}
+            >
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-pink-500/10 rounded-xl flex items-center justify-center">
+                    <span className="text-2xl">🎵</span>
+                  </div>
+                  <div className="flex-1">
+                    <CardTitle className="text-lg">Simon Says</CardTitle>
+                    <CardDescription>
+                      🎵 Simon Says — Listen and watch carefully — repeat the sequence of colors, sounds, or words in the
+                      correct order! Each round gets faster and longer, testing focus and memory. Best Score: [dynamic tracking]
+                      Level: [dynamic progression]
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2 mb-3">
+                  <Badge>Best Score: {simonBest ?? "—"}</Badge>
+                  <Badge variant="outline">Level: {simonLevel ?? "—"}</Badge>
+                </div>
+                <Button className="w-full bg-pink-500 text-white hover:bg-pink-500/90">
+                  <span className="mr-2">▶️</span>
+                  Play Simon Says
+                </Button>
+              </CardContent>
+            </Card>
           </div>
         </div>
       )}
       {activeSection === "rhyme-radar" && <RhymeRadarGame />}
       {activeSection === "memory-boost" && <MemoryBoostGame />}
+      {activeSection === "simon-says" && <SimonSays />}
+      {activeSection === "sound-match" && <SoundMatch />}
+      {activeSection === "story-scramble" && <StoryScramble />}
 
       {activeSection === "dashboard" && (
         <main className="container mx-auto px-4 py-8">
@@ -361,35 +437,7 @@ export default function DyslexiaLearningApp() {
                 </CardContent>
               </Card>
 
-              {/* AI Learning Path */}
-              <Card
-                className="hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => setActiveSection("ai-coach")}
-              >
-                <CardHeader>
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-secondary/10 rounded-xl flex items-center justify-center">
-                      <span className="text-xl">🧠</span>
-                    </div>
-                    <div className="flex-1">
-                      <CardTitle className="text-lg">AI Learning Coach</CardTitle>
-                      <CardDescription>Personalized exercises for your needs</CardDescription>
-                    </div>
-                    <Button size="sm" variant="secondary">
-                      Continue
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>Today's Focus: Spelling Patterns</span>
-                      <span className="text-muted-foreground">10 min</span>
-                    </div>
-                    <Progress value={30} className="h-2" />
-                  </div>
-                </CardContent>
-              </Card>
+
 
               <Card
                 className="hover:shadow-md transition-shadow cursor-pointer"
@@ -554,7 +602,11 @@ export default function DyslexiaLearningApp() {
           <div className="mt-8">
             <h3 className="text-xl font-semibold mb-4 text-balance">Quick Actions</h3>
             <div className="grid md:grid-cols-4 gap-4">
-              <Button variant="outline" className="h-20 flex-col gap-2 bg-transparent">
+              <Button
+                variant="outline"
+                className="h-20 flex-col gap-2 bg-transparent"
+                onClick={() => setActiveSection("peer-community")}
+              >
                 <span className="text-xl">👥</span>
                 <span>Peer Community</span>
               </Button>

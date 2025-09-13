@@ -20,6 +20,7 @@ import {
   ArrowRight,
   RefreshCw,
 } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 
 interface ExamQuestion {
   id: string
@@ -38,18 +39,24 @@ interface StudyPlan {
   priority: "high" | "medium" | "low"
 }
 
-export default function AIExamPrep() {
+export default function ExamPrep() {
+  const { toast } = useToast()
   const [activeTab, setActiveTab] = useState("practice")
   const [selectedSubject, setSelectedSubject] = useState("english")
+  const [selectedDifficulty, setSelectedDifficulty] = useState("medium")
   const [currentQuestion, setCurrentQuestion] = useState(0)
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
   const [showExplanation, setShowExplanation] = useState(false)
   const [score, setScore] = useState(0)
   const [studyText, setStudyText] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isGenTest, setIsGenTest] = useState(false)
+  const [genType, setGenType] = useState("questions")
+  const [genDifficulty, setGenDifficulty] = useState("medium")
+  const [generatedText, setGeneratedText] = useState("")
 
   // Mock exam questions
-  const examQuestions: ExamQuestion[] = [
+  const initialQuestions: ExamQuestion[] = [
     {
       id: "1",
       question: "Which word has the same sound as 'cat' at the beginning?",
@@ -78,6 +85,7 @@ export default function AIExamPrep() {
       topic: "Spelling",
     },
   ]
+  const [examQuestions, setExamQuestions] = useState<ExamQuestion[]>(initialQuestions)
 
   // Mock study plans
   const studyPlans: StudyPlan[] = [
@@ -117,18 +125,67 @@ export default function AIExamPrep() {
     }
   }
 
+  async function callGemini(messages: { role: 'user' | 'model'; content: string }[]) {
+    try {
+      const resp = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages }),
+      })
+      const data = await resp.json()
+      return data?.text || ''
+    } catch (e: any) {
+      return `Error: ${e?.message || 'failed to reach service'}`
+    }
+  }
+
   const generateStudyMaterial = async () => {
+    if (!studyText.trim()) {
+      toast({ title: 'Enter a topic first', description: 'Please add a topic or keywords to generate content.' })
+      return
+    }
     setIsGenerating(true)
-    // Simulate AI generation
-    setTimeout(() => {
-      setIsGenerating(false)
-    }, 2000)
+    setGeneratedText('')
+
+    const prompt = `Generate ${genType} for subject ${selectedSubject} with difficulty ${genDifficulty}. Topic/keywords: "${studyText}". Use concise, student-friendly wording.`
+    const text = await callGemini([{ role: 'user', content: prompt }])
+
+    setGeneratedText(text)
+    setIsGenerating(false)
+  }
+
+  const generateNewTest = async () => {
+    setIsGenTest(true)
+    setShowExplanation(false)
+    setSelectedAnswer(null)
+    setCurrentQuestion(0)
+    setScore(0)
+
+    const prompt = `Create 5 multiple-choice questions as JSON array with fields id, question, options (4), correctAnswer (index 0-3), explanation, difficulty (easy|medium|hard), topic. Subject: ${selectedSubject}. Difficulty bias: ${selectedDifficulty}. Keep language simple.`
+
+    const text = await callGemini([{ role: 'user', content: prompt }])
+
+    // Try to parse JSON from the model output; fallback to initialQuestions
+    try {
+      const jsonMatch = text.match(/\[([\s\S]*)\]/)
+      const parsed: ExamQuestion[] = JSON.parse(jsonMatch ? jsonMatch[0] : text)
+      if (Array.isArray(parsed) && parsed.length) {
+        setExamQuestions(parsed)
+      } else {
+        setExamQuestions(initialQuestions)
+      }
+    } catch {
+      setExamQuestions(initialQuestions)
+    }
+
+    setIsGenTest(false)
+    toast({ title: 'New test ready', description: `Subject: ${selectedSubject}` })
   }
 
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
-        <h2 className="text-3xl font-bold mb-2 text-balance">AI Exam Preparation</h2>
+        <h2 className="text-3xl font-bold mb-2 text-balance">Exam Preparation</h2>
         <p className="text-muted-foreground">Smart study plans and practice tests tailored for you</p>
       </div>
 
@@ -148,7 +205,7 @@ export default function AIExamPrep() {
           className="flex items-center gap-2"
         >
           <Brain className="w-4 h-4" />
-          AI Study Plans
+          Study Plans
         </Button>
         <Button
           variant={activeTab === "generator" ? "default" : "outline"}
@@ -268,9 +325,22 @@ export default function AIExamPrep() {
                     </SelectContent>
                   </Select>
                 </div>
-                <Button className="w-full bg-transparent" variant="outline">
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Difficulty</label>
+                  <Select value={selectedDifficulty} onValueChange={setSelectedDifficulty}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="easy">Easy</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="hard">Hard</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button className="w-full" variant="outline" onClick={generateNewTest} disabled={isGenTest}>
                   <RefreshCw className="w-4 h-4 mr-2" />
-                  Generate New Test
+                  {isGenTest ? 'Generating...' : 'Generate New Test'}
                 </Button>
               </CardContent>
             </Card>
@@ -307,7 +377,7 @@ export default function AIExamPrep() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Brain className="w-5 h-5" />
-                  Today's AI-Generated Study Plan
+                  Today's Study Plan
                 </CardTitle>
                 <CardDescription>Personalized based on your learning patterns and weak areas</CardDescription>
               </CardHeader>
@@ -333,7 +403,15 @@ export default function AIExamPrep() {
                           </li>
                         ))}
                       </ul>
-                      <Button size="sm" className="mt-3 w-full">
+                      <Button
+                        size="sm"
+                        className="mt-3 w-full"
+                        onClick={() => {
+                          setActiveTab('generator')
+                          setStudyText(plan.topic)
+                          toast({ title: 'Session started', description: `Loaded topic: ${plan.topic}` })
+                        }}
+                      >
                         Start Session
                       </Button>
                     </CardContent>
@@ -347,7 +425,7 @@ export default function AIExamPrep() {
             <Card>
               <CardHeader>
                 <CardTitle>Weekly Focus Areas</CardTitle>
-                <CardDescription>AI-identified areas that need attention</CardDescription>
+                <CardDescription>Identified areas that need attention</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-3">
@@ -378,7 +456,7 @@ export default function AIExamPrep() {
 
             <Card>
               <CardHeader>
-                <CardTitle>AI Recommendations</CardTitle>
+                <CardTitle>Learning Recommendations</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
@@ -408,7 +486,7 @@ export default function AIExamPrep() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Zap className="w-5 h-5" />
-                AI Content Generator
+                Content Generator
               </CardTitle>
               <CardDescription>
                 Generate personalized study materials, practice questions, and explanations
@@ -418,7 +496,7 @@ export default function AIExamPrep() {
               <div className="grid md:grid-cols-2 gap-6">
                 <div>
                   <label className="text-sm font-medium mb-2 block">Content Type</label>
-                  <Select>
+                  <Select value={genType} onValueChange={setGenType}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select content type" />
                     </SelectTrigger>
@@ -432,7 +510,7 @@ export default function AIExamPrep() {
                 </div>
                 <div>
                   <label className="text-sm font-medium mb-2 block">Difficulty Level</label>
-                  <Select>
+                  <Select value={genDifficulty} onValueChange={setGenDifficulty}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select difficulty" />
                     </SelectTrigger>
@@ -440,7 +518,7 @@ export default function AIExamPrep() {
                       <SelectItem value="easy">Easy</SelectItem>
                       <SelectItem value="medium">Medium</SelectItem>
                       <SelectItem value="hard">Hard</SelectItem>
-                      <SelectItem value="adaptive">Adaptive (AI chooses)</SelectItem>
+                      <SelectItem value="adaptive">Adaptive (chooses)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -478,7 +556,30 @@ export default function AIExamPrep() {
                       <div className="h-4 bg-muted rounded w-1/2 mx-auto"></div>
                       <div className="h-4 bg-muted rounded w-2/3 mx-auto"></div>
                     </div>
-                    <p className="text-sm text-muted-foreground mt-4">AI is creating personalized content for you...</p>
+                    <p className="text-sm text-muted-foreground mt-4">personalized content for you...</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {!isGenerating && generatedText && (
+                <Card className="bg-muted/50">
+                  <CardContent className="p-6 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-semibold">Result</h4>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(generatedText)
+                            toast({ title: 'Copied to clipboard' })
+                          } catch {}
+                        }}
+                      >
+                        Copy
+                      </Button>
+                    </div>
+                    <div className="text-sm whitespace-pre-wrap">{generatedText}</div>
                   </CardContent>
                 </Card>
               )}

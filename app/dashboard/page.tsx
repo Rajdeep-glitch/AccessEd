@@ -77,13 +77,7 @@ export default function DashboardPage() {
               >
                 Story Mode
               </Button>
-              <Button
-                variant={activeSection === "ai-coach" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setActiveSection("ai-coach")}
-              >
-                AI Coach
-              </Button>
+
               <Button
                 variant={activeSection === "games" ? "default" : "ghost"}
                 size="sm"
@@ -319,34 +313,7 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
 
-              <Card
-                className="hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => setActiveSection("ai-coach")}
-              >
-                <CardHeader>
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-secondary/10 rounded-xl flex items-center justify-center">
-                      <span className="text-xl">🧠</span>
-                    </div>
-                    <div className="flex-1">
-                      <CardTitle className="text-lg">AI Learning Coach</CardTitle>
-                      <CardDescription>Personalized exercises for your needs</CardDescription>
-                    </div>
-                    <Button size="sm" variant="secondary">
-                      Continue
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>Today's Focus: Spelling Patterns</span>
-                      <span className="text-muted-foreground">10 min</span>
-                    </div>
-                    <Progress value={30} className="h-2" />
-                  </div>
-                </CardContent>
-              </Card>
+
 
               <Card
                 className="hover:shadow-md transition-shadow cursor-pointer"
@@ -452,12 +419,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {activeSection === "ai-coach" && (
-        <div className="container mx-auto px-4 py-8">
-          <h2 className="text-2xl font-bold mb-4">AI Coach</h2>
-          <p className="text-muted-foreground">Personalized AI learning coach coming soon!</p>
-        </div>
-      )}
+
 
       {activeSection === "voice-reading" && (
         <div className="container mx-auto px-4 py-8">
