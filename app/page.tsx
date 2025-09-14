@@ -153,7 +153,13 @@ export default function DyslexiaLearningApp() {
 
       {activeSection === "story" && <StoryMode />}
 
-      {activeSection === "voice-reading" && <VoiceReadingAssessment />}
+      {activeSection === "voice-reading" && (
+        <VoiceReadingAssessment
+          onPlan={() => {
+            setActiveSection("ai-learning-path")
+          }}
+        />
+      )}
       {activeSection === "parent" && <ParentTeacherDashboard />}
       {activeSection === "ai-exam-prep" && <AIExamPrep />}
       {activeSection === "spelling-builder" && <SpellingBuilder />}
@@ -183,6 +189,7 @@ export default function DyslexiaLearningApp() {
           <DyslexiaLens />
         </div>
       )}
+
 
       {activeSection === "settings" && (
         <div className="container mx-auto px-4 py-8">

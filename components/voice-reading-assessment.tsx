@@ -75,7 +75,7 @@ const readingPassages: ReadingPassage[] = [
   },
 ]
 
-export default function VoiceReadingAssessment() {
+export default function VoiceReadingAssessment({ onPlan }: { onPlan?: () => void }) {
   const [selectedPassage, setSelectedPassage] = useState<ReadingPassage | null>(null)
 
   // Existing recording states
@@ -440,6 +440,26 @@ export default function VoiceReadingAssessment() {
         <div className="flex gap-4 justify-center mt-8">
           <Button onClick={() => setSelectedPassage(null)} className="bg-chart-2 text-white hover:bg-chart-2/90">
             Try Another Passage
+          </Button>
+          <Button
+            onClick={() => {
+              try {
+                const plan = {
+                  recommended: (results.accuracy < 85 || results.wordsPerMinute < 60) ? "sound-match" : "story-scramble",
+                  reasons: [
+                    results.accuracy < 85 ? "Accuracy below target — practice phoneme discrimination." : "Sequencing practice to build comprehension.",
+                    `WPM: ${results.wordsPerMinute}, Accuracy: ${results.accuracy}%`,
+                  ],
+                  focus: selectedPassage?.focusAreas || [],
+                  timestamp: Date.now(),
+                }
+                localStorage.setItem("ai.learningPlan", JSON.stringify(plan))
+              } catch {}
+              if (onPlan) onPlan()
+            }}
+            className="bg-primary text-white hover:bg-primary/90"
+          >
+            Generate Plan
           </Button>
           <Button variant="outline" onClick={resetAssessment}>
             <RotateCcw className="w-4 h-4 mr-2" />
