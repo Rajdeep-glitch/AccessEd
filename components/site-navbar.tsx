@@ -23,6 +23,7 @@ import {
   UsersRound,
   Trophy,
   Sparkles,
+  ArrowLeft,
 } from "lucide-react"
 import FontSwitcher from "@/components/font-switcher"
 
@@ -36,6 +37,8 @@ export type SectionKey =
   | "peer-community"
   | "content-generator"
   | "ai-coach"
+  | "ai-coach-pro"
+  | "dyslexia-lens"
   | "settings"
 
 export default function SiteNavbar({
@@ -43,11 +46,15 @@ export default function SiteNavbar({
   onNavigate,
   user,
   onSignOut,
+  onBack,
+  canGoBack,
 }: {
   activeSection: SectionKey
   onNavigate: (key: SectionKey) => void
   user: { name: string; type?: string }
   onSignOut: () => void
+  onBack?: () => void
+  canGoBack?: boolean
 }) {
   const initials = useMemo(() => (user?.name || "U").slice(0, 2).toUpperCase(), [user?.name])
 
@@ -65,8 +72,13 @@ export default function SiteNavbar({
   return (
     <header className="sticky top-0 z-40 border-b bg-card/70 backdrop-blur supports-[backdrop-filter]:bg-card/50">
       <div className="container mx-auto px-4 py-3 flex items-center justify-between gap-3">
-        {/* Brand */}
+        {/* Left controls: Back + Brand */}
         <div className="flex items-center gap-3">
+          {canGoBack && (
+            <Button variant="ghost" size="icon" className="mr-1" onClick={onBack} aria-label="Back">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          )}
           <div className="w-10 h-10 rounded-xl bg-primary text-primary-foreground grid place-items-center shadow-sm">
             <span className="text-xl">🧠</span>
           </div>
@@ -80,6 +92,7 @@ export default function SiteNavbar({
 
         {/* Desktop Nav + Actions */}
         <nav className="hidden lg:flex items-center gap-2">
+          {/* Primary actions (always visible) */}
           <Button variant="ghost" size="sm" className="hover:bg-primary/10 hover:text-primary transition-colors" onClick={() => onNavigate("dashboard")}>
             <Trophy className="h-4 w-4 mr-2" /> Dashboard
           </Button>
@@ -92,21 +105,23 @@ export default function SiteNavbar({
           <Button variant="ghost" size="sm" className="hover:bg-primary/10 hover:text-primary transition-colors" onClick={() => onNavigate("voice-reading")}>
             <Mic className="h-4 w-4 mr-2" /> Voice Reading
           </Button>
-          <Button variant="ghost" size="sm" className="hover:bg-primary/10 hover:text-primary transition-colors" onClick={() => onNavigate("content-generator")}>
-            <Sparkles className="h-4 w-4 mr-2" /> Content Generator
-          </Button>
-          <Button variant="ghost" size="sm" className="hover:bg-primary/10 hover:text-primary transition-colors" onClick={() => onNavigate("ai-coach")}>
-            <Sparkles className="h-4 w-4 mr-2" /> Doc Summerizer
-          </Button>
-          <Button variant="ghost" size="sm" className="hover:bg-primary/10 hover:text-primary transition-colors" onClick={() => onNavigate("parent")}>
-            <UsersRound className="h-4 w-4 mr-2" /> Parent Portal
-          </Button>
-          <Button variant="ghost" size="sm" className="hover:bg-primary/10 hover:text-primary transition-colors" onClick={() => onNavigate("ai-exam-prep")}>
-            <Trophy className="h-4 w-4 mr-2" /> Exam Prep
-          </Button>
-          <Button variant="ghost" size="sm" className="hover:bg-primary/10 hover:text-primary transition-colors" onClick={() => onNavigate("peer-community")}>
-            <UsersRound className="h-4 w-4 mr-2" /> Community
-          </Button>
+
+          {/* Compact overflow into More */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="hover:bg-primary/10 hover:text-primary transition-colors">
+                More
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="z-[100]">
+              <DropdownMenuItem onClick={() => onNavigate("content-generator")}>Content Generator</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onNavigate("ai-coach")}>Doc Summarizer</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onNavigate("dyslexia-lens")}>Dyslexia Lens</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onNavigate("parent")}>Parent Portal</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onNavigate("ai-exam-prep")}>Exam Prep</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onNavigate("peer-community")}>Community</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <Separator orientation="vertical" className="mx-2 h-6" />
           <FontSwitcher className="mr-2" />
@@ -167,7 +182,8 @@ export default function SiteNavbar({
                     <DropdownMenuItem onClick={() => onNavigate("games")}>Games</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => onNavigate("voice-reading")}>Voice Reading</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => onNavigate("content-generator")}>Content Generator</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => onNavigate("ai-coach")}>Doc Summerizer</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => onNavigate("ai-coach")}>Doc Summarizer</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => onNavigate("dyslexia-lens")}>Dyslexia Lens</DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
 

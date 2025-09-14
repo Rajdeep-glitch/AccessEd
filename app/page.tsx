@@ -22,6 +22,8 @@ import FontSwitcher from "@/components/font-switcher"
 import SimonSays from "@/components/simon-says"
 import SoundMatch from "@/components/sound-match"
 import StoryScramble from "@/components/story-scramble"
+import AIReadingCoachPro from "@/components/ai-reading-coach-pro"
+import DyslexiaLens from "@/components/dyslexia-lens"
 
 export default function DyslexiaLearningApp() {
   const [activeSection, setActiveSection] = useState("dashboard")
@@ -34,6 +36,25 @@ export default function DyslexiaLearningApp() {
   const [soundLevel, setSoundLevel] = useState<number | null>(null)
   const [scrambleCompleted, setScrambleCompleted] = useState<number | null>(null)
   const [scrambleLevel, setScrambleLevel] = useState<number | null>(null)
+
+  // Simple history stack for back navigation across sections
+  const [history, setHistory] = useState<string[]>([])
+  const canGoBack = history.length > 0
+
+  const navigate = (next: string) => {
+    setHistory((prev) => (prev[prev.length - 1] === activeSection ? prev : [...prev, activeSection]))
+    setActiveSection(next)
+  }
+
+  const goBack = () => {
+    setHistory((prev) => {
+      if (prev.length === 0) return prev
+      const copy = [...prev]
+      const last = copy.pop() as string
+      setActiveSection(last)
+      return copy
+    })
+  }
 
   // Sync auth state with localStorage (set by /auth/signin)
   useEffect(() => {
@@ -123,9 +144,11 @@ export default function DyslexiaLearningApp() {
       {/* Header */}
       <SiteNavbar
         activeSection={activeSection as any}
-        onNavigate={(key) => setActiveSection(key)}
+        onNavigate={(key) => navigate(key)}
         user={user}
         onSignOut={() => setIsAuthenticated(false)}
+        onBack={goBack}
+        canGoBack={canGoBack}
       />
 
       {activeSection === "story" && <StoryMode />}
@@ -143,9 +166,21 @@ export default function DyslexiaLearningApp() {
             <iframe
               src={process.env.NEXT_PUBLIC_AI_COACH_URL || "/ai-coach/index.html"}
               className="w-full h-full"
-              title="Doc Summerizer"
+              title="Doc Summarizer"
             />
           </div>
+        </div>
+      )}
+
+      {activeSection === "ai-coach-pro" && (
+        <div className="container mx-auto px-4 py-8">
+          <AIReadingCoachPro />
+        </div>
+      )}
+
+      {activeSection === "dyslexia-lens" && (
+        <div className="container mx-auto px-4 py-8">
+          <DyslexiaLens />
         </div>
       )}
 
@@ -159,8 +194,10 @@ export default function DyslexiaLearningApp() {
               </CardHeader>
               <CardContent>
                 <div className="flex gap-2 flex-wrap">
-                  <Button onClick={() => setActiveSection("content-generator")}>Open Content Generator</Button>
-                  <Button variant="secondary" onClick={() => setActiveSection("ai-coach")}>Open Doc Summerizer</Button>
+                  <Button onClick={() => navigate("content-generator")}>Open Content Generator</Button>
+                  <Button variant="secondary" onClick={() => navigate("ai-coach")}>Open Doc Summarizer</Button>
+                  <Button variant="outline" onClick={() => navigate("ai-coach-pro")}>Open Coach Pro</Button>
+                  <Button variant="outline" onClick={() => navigate("dyslexia-lens")}>Open Dyslexia Lens</Button>
                 </div>
               </CardContent>
             </Card>
@@ -179,7 +216,7 @@ export default function DyslexiaLearningApp() {
             {/* NEW: Sound Match */}
             <Card
               className="hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => setActiveSection("sound-match")}
+              onClick={() => navigate("sound-match")}
             >
               <CardHeader>
                 <div className="flex items-center gap-3">
@@ -209,7 +246,7 @@ export default function DyslexiaLearningApp() {
             {/* NEW: Story Scramble */}
             <Card
               className="hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => setActiveSection("story-scramble")}
+              onClick={() => navigate("story-scramble")}
             >
               <CardHeader>
                 <div className="flex items-center gap-3">
@@ -238,7 +275,7 @@ export default function DyslexiaLearningApp() {
 
             <Card
               className="hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => setActiveSection("rhyme-radar")}
+              onClick={() => navigate("rhyme-radar")}
             >
               <CardHeader>
                 <div className="flex items-center gap-3">
@@ -265,7 +302,7 @@ export default function DyslexiaLearningApp() {
 
             <Card
               className="hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => setActiveSection("memory-boost")}
+              onClick={() => navigate("memory-boost")}
             >
               <CardHeader>
                 <div className="flex items-center gap-3">
@@ -292,7 +329,7 @@ export default function DyslexiaLearningApp() {
 
             <Card
               className="hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => setActiveSection("spelling-builder")}
+              onClick={() => navigate("spelling-builder")}
             >
               <CardHeader>
                 <div className="flex items-center gap-3">
@@ -319,7 +356,7 @@ export default function DyslexiaLearningApp() {
 
             <Card
               className="hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => setActiveSection("simon-says")}
+              onClick={() => navigate("simon-says")}
             >
               <CardHeader>
                 <div className="flex items-center gap-3">
@@ -424,7 +461,7 @@ export default function DyslexiaLearningApp() {
               {/* Story Mode */}
               <Card
                 className="hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => setActiveSection("story")}
+                onClick={() => navigate("story")}
               >
                 <CardHeader>
                   <div className="flex items-center gap-3">
@@ -455,7 +492,7 @@ export default function DyslexiaLearningApp() {
 
               <Card
                 className="hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => setActiveSection("spelling-builder")}
+                onClick={() => navigate("spelling-builder")}
               >
                 <CardHeader>
                   <div className="flex items-center gap-3">
@@ -477,7 +514,7 @@ export default function DyslexiaLearningApp() {
               {/* Voice Reading */}
               <Card
                 className="hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => setActiveSection("voice-reading")}
+                onClick={() => navigate("voice-reading")}
               >
                 <CardHeader>
                   <div className="flex items-center gap-3">
@@ -503,7 +540,7 @@ export default function DyslexiaLearningApp() {
 
               <Card
                 className="hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => setActiveSection("reading-fluency")}
+                onClick={() => navigate("reading-fluency")}
               >
                 <CardHeader>
                   <div className="flex items-center gap-3">
@@ -530,7 +567,7 @@ export default function DyslexiaLearningApp() {
               {/* Rhyme Radar Game */}
               <Card
                 className="hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => setActiveSection("rhyme-radar")}
+                onClick={() => navigate("rhyme-radar")}
               >
                 <CardHeader>
                   <div className="flex items-center gap-3">
@@ -557,7 +594,7 @@ export default function DyslexiaLearningApp() {
               {/* Memory Boost */}
               <Card
                 className="hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => setActiveSection("memory-boost")}
+                onClick={() => navigate("memory-boost")}
               >
                 <CardHeader>
                   <div className="flex items-center gap-3">
@@ -619,7 +656,7 @@ export default function DyslexiaLearningApp() {
               <Button
                 variant="outline"
                 className="h-20 flex-col gap-2 bg-transparent"
-                onClick={() => setActiveSection("peer-community")}
+                onClick={() => navigate("peer-community")}
               >
                 <span className="text-xl">👥</span>
                 <span>Peer Community</span>
@@ -627,7 +664,7 @@ export default function DyslexiaLearningApp() {
               <Button
                 variant="outline"
                 className="h-20 flex-col gap-2 bg-transparent"
-                onClick={() => setActiveSection("ai-exam-prep")}
+                onClick={() => navigate("ai-exam-prep")}
               >
                 <span className="text-xl">📖</span>
                 <span>Exam Prep</span>
@@ -635,15 +672,15 @@ export default function DyslexiaLearningApp() {
               <Button
                 variant="outline"
                 className="h-20 flex-col gap-2 bg-transparent"
-                onClick={() => setActiveSection("ai-coach")}
+                onClick={() => navigate("ai-coach")}
               >
                 <span className="text-xl">🧠</span>
-                <span>Doc Summerizer</span>
+                <span>Doc Summarizer</span>
               </Button>
               <Button
                 variant="outline"
                 className="h-20 flex-col gap-2 bg-transparent"
-                onClick={() => setActiveSection("games")}
+                onClick={() => navigate("games")}
               >
                 <span className="text-xl">🏆</span>
                 <span>Games</span>

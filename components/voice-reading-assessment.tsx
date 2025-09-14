@@ -1,9 +1,10 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
 import { Mic, MicOff, Pause, RotateCcw, Volume2, CheckCircle, AlertCircle, Star, Trophy, BookOpen } from "lucide-react"
 
 interface ReadingPassage {
@@ -23,6 +24,28 @@ interface ReadingResult {
   feedback: string[]
   strengths: string[]
   improvements: string[]
+}
+
+// --- Utilities borrowed from Coach Pro ---
+function tokenize(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s']/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+}
+
+function levenshtein(a: string[], b: string[]) {
+  const dp = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0))
+  for (let i = 0; i <= a.length; i++) dp[i][0] = i
+  for (let j = 0; j <= b.length; j++) dp[0][j] = j
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost)
+    }
+  }
+  return dp[a.length][b.length]
 }
 
 const readingPassages: ReadingPassage[] = [
@@ -54,19 +77,239 @@ const readingPassages: ReadingPassage[] = [
 
 export default function VoiceReadingAssessment() {
   const [selectedPassage, setSelectedPassage] = useState<ReadingPassage | null>(null)
-  const [isRecording, setIsRecording] = useState(false)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [recordingTime, setRecordingTime] = useState(0)
-  const [hasRecorded, setHasRecorded] = useState(false)
-  const [showResults, setShowResults] = useState(false)
-  const [currentWord, setCurrentWord] = useState(0)
-  const [readingStarted, setReadingStarted] = useState(false)
 
+  // Existing recording states
+  const [isRecording, setIsRecording] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [hasRecorded, setHasRecorded] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const [readingStarted, setReadingStarted] = useState(false);
+
+  // New: live transcript + metrics
+  const [transcript, setTranscript] = useState("")
+  const [startTime, setStartTime] = useState(null as number | null)
+  const [highlightIndex, setHighlightIndex] = useState(0)
+
+  const passageTokens = useMemo(() => tokenize(selectedPassage?.text || ""), [selectedPassage?.text])
+  const transcriptTokens = useMemo(() => tokenize(transcript), [transcript])
+
+  const distance = useMemo(
+    () => levenshtein(passageTokens.slice(0, transcriptTokens.length), transcriptTokens),
+    [passageTokens, transcriptTokens]
+  )
+  const accuracy = useMemo(() => {
+    if (transcriptTokens.length === 0) return 0
+    const readCount = Math.max(1, transcriptTokens.length)
+    const correct = Math.max(0, readCount - distance)
+    return Math.max(0, Math.min(100, Math.round((correct / readCount) * 100)))
+  }, [transcriptTokens.length, distance])
+
+  const wpm = useMemo(() => {
+    if (!startTime || transcriptTokens.length === 0) return 0
+    const minutes = (Date.now() - startTime) / 60000
+    if (minutes <= 0) return 0
+    return Math.round(transcriptTokens.length / minutes)
+  }, [startTime, transcriptTokens.length])
+
+  // Greedy highlight advance based on recognized tokens
+  useEffect(() => {
+    let idx = 0
+    for (const word of transcriptTokens) {
+      while (idx < passageTokens.length && passageTokens[idx] !== word) idx++
+      if (idx < passageTokens.length && passageTokens[idx] === word) idx++
+    }
+    setHighlightIndex(idx)
+  }, [transcriptTokens, passageTokens])
+
+  // Mispronunciation heatmap alignment (greedy)
+  const alignment = useMemo(() => {
+    const n = passageTokens.length
+    const matched = new Array<boolean>(n).fill(false)
+    const errors = new Array<number>(n).fill(0)
+    let i = 0
+    let j = 0
+    while (i < n && j < transcriptTokens.length) {
+      if (passageTokens[i] === transcriptTokens[j]) { matched[i] = true; i++; j++; }
+      else {
+        const lookahead = Math.min(3, n - i)
+        let found = -1
+        for (let k = 0; k < lookahead; k++) {
+          if (passageTokens[i + k] === transcriptTokens[j]) { found = k; break }
+        }
+        if (found > 0) { for (let k = 0; k < found; k++) errors[i + k]++; i += found; matched[i] = true; i++; j++; }
+        else { errors[i]++; i++; j++; }
+      }
+    }
+    while (i < n) { errors[i]++; i++; }
+    return { matched, errors }
+  }, [passageTokens, transcriptTokens])
+
+  // MediaRecorder for raw audio (kept for demo parity)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const timerRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Simulated results for demo purposes
+  useEffect(() => {
+    if (isRecording && recordingTime < 120) {
+      // Max 2 minutes
+      timerRef.current = setTimeout(() => {
+        setRecordingTime((t) => t + 1)
+      }, 1000)
+    }
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [isRecording, recordingTime])
+
+  // Web Speech API recognition (from Coach Pro)
+  const recognitionRef = useRef<any>(null)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) return
+
+    const rec = new SpeechRecognition()
+    rec.continuous = true
+    rec.interimResults = true
+    rec.lang = "en-US"
+
+    rec.onresult = (event: any) => {
+      let final = ""
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const res = event.results[i]
+        if (res.isFinal) final += res[0].transcript
+      }
+      if (final) setTranscript((prev) => (prev ? prev + " " : "") + final.trim())
+    }
+
+    rec.onend = () => {
+      setIsRecording(false)
+    }
+
+    recognitionRef.current = rec
+  }, [])
+
+  const startRecording = async () => {
+    try {
+      // Start MediaRecorder (optional)
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mediaRecorder = new MediaRecorder(stream)
+      mediaRecorderRef.current = mediaRecorder
+      audioChunksRef.current = []
+      mediaRecorder.ondataavailable = (event) => {
+        audioChunksRef.current.push(event.data)
+      }
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/wav" })
+        // audioBlob could be uploaded to a server later
+        setHasRecorded(true)
+        stream.getTracks().forEach((track) => track.stop())
+      }
+      mediaRecorder.start()
+
+      // Start STT recognition
+      if (!recognitionRef.current) {
+        alert("Speech recognition is not supported in this browser.")
+      } else {
+        setTranscript("")
+        setStartTime(Date.now())
+        recognitionRef.current.start()
+      }
+
+      setIsRecording(true)
+      setRecordingTime(0)
+      setReadingStarted(true)
+    } catch (error) {
+      console.error("Error accessing microphone:", error)
+      alert("Please allow microphone access to use voice reading assessment.")
+    }
+  }
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop()
+    }
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop() } catch {}
+    }
+    setIsRecording(false)
+  }
+
+  const playModelReading = () => {
+    if (!selectedPassage) return
+
+    if (window.speechSynthesis) {
+      if (isPlaying) {
+        window.speechSynthesis.cancel()
+        setIsPlaying(false)
+        return
+      }
+
+      const utterance = new SpeechSynthesisUtterance(selectedPassage.text)
+      utterance.rate = selectedPassage.level === "beginner" ? 0.85 : selectedPassage.level === "intermediate" ? 1.0 : 1.1
+      utterance.pitch = 1.05
+      utterance.volume = 1
+      const voices = window.speechSynthesis.getVoices()
+      const preferredVoice = voices.find((voice) => /Female|Google/i.test(voice.name))
+      if (preferredVoice) utterance.voice = preferredVoice
+
+      // Simple timed highlight while model reads
+      const words = passageTokens
+      let i = 0
+      const totalMs = Math.max(6000, words.length * (selectedPassage.level === "beginner" ? 450 : selectedPassage.level === "intermediate" ? 350 : 300))
+      const step = Math.max(50, Math.floor(totalMs / Math.max(1, words.length)))
+      setHighlightIndex(0)
+      const interval = setInterval(() => {
+        i++
+        setHighlightIndex(Math.min(i, words.length))
+        if (i >= words.length) clearInterval(interval)
+      }, step)
+
+      utterance.onstart = () => setIsPlaying(true)
+      utterance.onend = () => {
+        setIsPlaying(false)
+        clearInterval(interval)
+        setHighlightIndex(words.length)
+      }
+      utterance.onerror = () => {
+        setIsPlaying(false)
+        clearInterval(interval)
+      }
+
+      window.speechSynthesis.speak(utterance)
+    }
+  }
+
+  const analyzeReading = () => {
+    // Simulated analysis for the results screen (kept from original)
+    setTimeout(() => {
+      setShowResults(true)
+    }, 1000)
+  }
+
+  const resetAssessment = () => {
+    setSelectedPassage(null)
+    setIsRecording(false)
+    setIsPlaying(false)
+    setRecordingTime(0)
+    setHasRecorded(false)
+    setShowResults(false)
+    setReadingStarted(false)
+    setTranscript("")
+    setStartTime(null)
+    setHighlightIndex(0)
+    if (recognitionRef.current) try { recognitionRef.current.stop() } catch {}
+    window.speechSynthesis.cancel()
+  }
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, "0")}`
+  }
+
+  // Simulated results (unchanged)
   const [results] = useState<ReadingResult>({
     accuracy: 87,
     fluency: 82,
@@ -84,107 +327,6 @@ export default function VoiceReadingAssessment() {
       "Try reading with more expression",
     ],
   })
-
-  useEffect(() => {
-    if (isRecording && recordingTime < 120) {
-      // Max 2 minutes
-      timerRef.current = setTimeout(() => {
-        setRecordingTime(recordingTime + 1)
-      }, 1000)
-    }
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
-    }
-  }, [isRecording, recordingTime])
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mediaRecorder = new MediaRecorder(stream)
-
-      mediaRecorderRef.current = mediaRecorder
-      audioChunksRef.current = []
-
-      mediaRecorder.ondataavailable = (event) => {
-        audioChunksRef.current.push(event.data)
-      }
-
-      mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/wav" })
-        // Here you would typically send the audio to a speech recognition service
-        setHasRecorded(true)
-        stream.getTracks().forEach((track) => track.stop())
-      }
-
-      mediaRecorder.start()
-      setIsRecording(true)
-      setRecordingTime(0)
-      setReadingStarted(true)
-    } catch (error) {
-      console.error("Error accessing microphone:", error)
-      alert("Please allow microphone access to use voice reading assessment.")
-    }
-  }
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop()
-      setIsRecording(false)
-    }
-  }
-
-  const playModelReading = () => {
-    if (!selectedPassage) return
-
-    if (window.speechSynthesis) {
-      if (isPlaying) {
-        window.speechSynthesis.cancel()
-        setIsPlaying(false)
-        return
-      }
-
-      const utterance = new SpeechSynthesisUtterance(selectedPassage.text)
-      utterance.rate = 0.8
-      utterance.pitch = 1.1
-      utterance.volume = 0.9
-
-      // Use a clear, friendly voice
-      const voices = window.speechSynthesis.getVoices()
-      const preferredVoice = voices.find((voice) => voice.name.includes("Female") || voice.name.includes("Google"))
-      if (preferredVoice) utterance.voice = preferredVoice
-
-      utterance.onstart = () => setIsPlaying(true)
-      utterance.onend = () => setIsPlaying(false)
-      utterance.onerror = () => setIsPlaying(false)
-
-      window.speechSynthesis.speak(utterance)
-    }
-  }
-
-  const analyzeReading = () => {
-    // Simulate analysis delay
-    setTimeout(() => {
-      setShowResults(true)
-    }, 2000)
-  }
-
-  const resetAssessment = () => {
-    setSelectedPassage(null)
-    setIsRecording(false)
-    setIsPlaying(false)
-    setRecordingTime(0)
-    setHasRecorded(false)
-    setShowResults(false)
-    setCurrentWord(0)
-    setReadingStarted(false)
-    window.speechSynthesis.cancel()
-  }
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, "0")}`
-  }
 
   if (showResults && selectedPassage) {
     return (
@@ -247,10 +389,7 @@ export default function VoiceReadingAssessment() {
             <CardContent>
               <div className="space-y-3">
                 {results.strengths.map((strength, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center gap-3 p-3 bg-green-50 rounded-lg border border-green-200"
-                  >
+                  <div key={index} className="flex items-center gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
                     <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
                     <span className="text-sm text-balance">{strength}</span>
                   </div>
@@ -270,10 +409,7 @@ export default function VoiceReadingAssessment() {
             <CardContent>
               <div className="space-y-3">
                 {results.improvements.map((improvement, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center gap-3 p-3 bg-secondary/5 rounded-lg border border-secondary/20"
-                  >
+                  <div key={index} className="flex items-center gap-3 p-3 bg-secondary/5 rounded-lg border border-secondary/20">
                     <AlertCircle className="w-5 h-5 text-secondary flex-shrink-0" />
                     <span className="text-sm text-balance">{improvement}</span>
                   </div>
@@ -315,6 +451,8 @@ export default function VoiceReadingAssessment() {
   }
 
   if (selectedPassage) {
+    const progress = Math.min(100, Math.round((highlightIndex / Math.max(1, passageTokens.length)) * 100))
+
     return (
       <div className="max-w-4xl mx-auto p-6">
         <div className="mb-6">
@@ -328,25 +466,45 @@ export default function VoiceReadingAssessment() {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-balance">{selectedPassage.title}</h1>
-                <p className="text-sm text-muted-foreground capitalize">
-                  {selectedPassage.level} Level • Voice Reading Practice
-                </p>
+                <p className="text-sm text-muted-foreground capitalize">{selectedPassage.level} Level • Voice Reading Practice</p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Reading Passage */}
+        {/* Reading Passage with karaoke highlighting */}
         <Card className="mb-6">
           <CardHeader>
             <CardTitle className="text-center text-balance">Read This Passage Aloud</CardTitle>
-            <CardDescription className="text-center">
-              Click the microphone to start recording, then read clearly and at your own pace
-            </CardDescription>
+            <CardDescription className="text-center">Click the microphone to start, then read clearly at your pace</CardDescription>
           </CardHeader>
-          <CardContent className="py-8">
-            <div className="text-lg leading-relaxed text-center max-w-2xl mx-auto mb-6">
-              <p className="text-balance">{selectedPassage.text}</p>
+          <CardContent className="py-6">
+            <div className="text-lg leading-8 text-center max-w-2xl mx-auto mb-6">
+              <p>
+                {passageTokens.map((t, i) => {
+                  const isDone = i < highlightIndex
+                  const isCurrent = i === highlightIndex
+                  const err = alignment.errors[i] || 0
+                  const maxErr = 3
+                  const alpha = Math.max(0, Math.min(1, err / maxErr))
+                  const heat = err > 0 && !isDone && !isCurrent ? `rgba(255, 0, 0, ${0.18 + 0.22 * alpha})` : undefined
+                  return (
+                    <span
+                      key={i}
+                      className={
+                        isDone
+                          ? "bg-green-200/60 text-foreground rounded px-1"
+                          : isCurrent
+                          ? "bg-yellow-200/60 text-foreground rounded px-1"
+                          : "rounded px-1"
+                      }
+                      style={{ backgroundColor: !isDone && !isCurrent ? heat : undefined }}
+                    >
+                      {t}{" "}
+                    </span>
+                  )
+                })}
+              </p>
             </div>
 
             {/* Focus Areas */}
@@ -357,6 +515,27 @@ export default function VoiceReadingAssessment() {
                 </Badge>
               ))}
             </div>
+
+            {/* Live metrics */}
+            <div className="grid md:grid-cols-4 gap-4 mb-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-primary">{wpm}</div>
+                <div className="text-xs text-muted-foreground">Words / Min</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-chart-2">{accuracy}%</div>
+                <div className="text-xs text-muted-foreground">Accuracy</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-secondary">{transcriptTokens.length}</div>
+                <div className="text-xs text-muted-foreground">Words Read</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-accent">{progress}%</div>
+                <div className="text-xs text-muted-foreground">Progress</div>
+              </div>
+            </div>
+            <Progress value={progress} className="h-2 mb-4" />
 
             {/* Controls */}
             <div className="flex flex-col items-center gap-4">
@@ -369,9 +548,7 @@ export default function VoiceReadingAssessment() {
                 <Button
                   size="lg"
                   onClick={isRecording ? stopRecording : startRecording}
-                  className={`${
-                    isRecording ? "bg-red-600 hover:bg-red-700 text-white" : "bg-chart-2 hover:bg-chart-2/90 text-white"
-                  }`}
+                  className={`${isRecording ? "bg-red-600 hover:bg-red-700 text-white" : "bg-chart-2 hover:bg-chart-2/90 text-white"}`}
                   disabled={isPlaying}
                 >
                   {isRecording ? <MicOff className="w-5 h-5 mr-2" /> : <Mic className="w-5 h-5 mr-2" />}
@@ -400,6 +577,21 @@ export default function VoiceReadingAssessment() {
                   </Button>
                 </div>
               )}
+            </div>
+
+            {/* Transcript */}
+            <div className="mt-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-balance">Live Transcript</CardTitle>
+                  <CardDescription>Captured locally in your browser</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-sm p-3 rounded border bg-background min-h-[80px] whitespace-pre-wrap">
+                    {transcript || (isRecording ? "(Listening...)" : "(Click Start Reading to capture your voice)")}
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           </CardContent>
         </Card>
@@ -440,7 +632,7 @@ export default function VoiceReadingAssessment() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-balance">Voice Reading Assessment</h1>
-            <p className="text-muted-foreground">Practice reading aloud and get personalized feedback</p>
+            <p className="text-muted-foreground">Practice reading aloud with live transcript, WPM and accuracy metrics</p>
           </div>
         </div>
       </div>
@@ -451,27 +643,15 @@ export default function VoiceReadingAssessment() {
 
         <div className="grid gap-6">
           {readingPassages.map((passage) => (
-            <Card
-              key={passage.id}
-              className="hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => setSelectedPassage(passage)}
-            >
+            <Card key={passage.id} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => setSelectedPassage(passage)}>
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle className="text-lg text-balance">{passage.title}</CardTitle>
-                    <CardDescription>
-                      Perfect for practicing {passage.focusAreas.join(", ").toLowerCase()}
-                    </CardDescription>
+                    <CardDescription>Perfect for practicing {passage.focusAreas.join(", ").toLowerCase()}</CardDescription>
                   </div>
                   <Badge
-                    variant={
-                      passage.level === "beginner"
-                        ? "secondary"
-                        : passage.level === "intermediate"
-                          ? "default"
-                          : "outline"
-                    }
+                    variant={passage.level === "beginner" ? "secondary" : passage.level === "intermediate" ? "default" : "outline"}
                     className="capitalize"
                   >
                     {passage.level}
@@ -514,27 +694,21 @@ export default function VoiceReadingAssessment() {
                 <BookOpen className="w-6 h-6 text-primary" />
               </div>
               <h3 className="font-medium mb-2 text-balance">1. Choose & Listen</h3>
-              <p className="text-sm text-muted-foreground text-balance">
-                Select a passage and listen to the model reading first
-              </p>
+              <p className="text-sm text-muted-foreground text-balance">Select a passage and listen to the model reading first</p>
             </div>
             <div className="text-center">
               <div className="w-12 h-12 bg-secondary/10 rounded-full flex items-center justify-center mx-auto mb-3">
                 <Mic className="w-6 h-6 text-secondary" />
               </div>
-              <h3 className="font-medium mb-2 text-balance">2. Record Yourself</h3>
-              <p className="text-sm text-muted-foreground text-balance">
-                Read the passage aloud at your own comfortable pace
-              </p>
+              <h3 className="font-medium mb-2 text-balance">2. Read Aloud</h3>
+              <p className="text-sm text-muted-foreground text-balance">Click Start to record and get a live transcript</p>
             </div>
             <div className="text-center">
               <div className="w-12 h-12 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-3">
                 <Star className="w-6 h-6 text-accent" />
               </div>
-              <h3 className="font-medium mb-2 text-balance">3. Get Feedback</h3>
-              <p className="text-sm text-muted-foreground text-balance">
-                Receive gentle, encouraging feedback to improve your reading
-              </p>
+              <h3 className="font-medium mb-2 text-balance">3. See Metrics</h3>
+              <p className="text-sm text-muted-foreground text-balance">View WPM, accuracy, and progress instantly</p>
             </div>
           </div>
         </CardContent>
