@@ -24,6 +24,7 @@ import SoundMatch from "@/components/sound-match"
 import StoryScramble from "@/components/story-scramble"
 import AIReadingCoachPro from "@/components/ai-reading-coach-pro"
 import DyslexiaLens from "@/components/dyslexia-lens"
+import DocSummarizer from "@/components/doc-summarizer"
 
 export default function DyslexiaLearningApp() {
   const [activeSection, setActiveSection] = useState("dashboard")
@@ -168,13 +169,7 @@ export default function DyslexiaLearningApp() {
       {activeSection === "content-generator" && <AIContentGenerator />}
       {activeSection === "ai-coach" && (
         <div className="container mx-auto px-4 py-8">
-          <div className="h-[80vh] border rounded-lg overflow-hidden">
-            <iframe
-              src={process.env.NEXT_PUBLIC_AI_COACH_URL || "/ai-coach/index.html"}
-              className="w-full h-full"
-              title="Doc Summarizer"
-            />
-          </div>
+          <DocSummarizer />
         </div>
       )}
 

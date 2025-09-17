@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
@@ -25,56 +25,11 @@ export default function MemoryBoostGame() {
   const [timeElapsed, setTimeElapsed] = useState(0)
   const [level, setLevel] = useState(1)
   const [score, setScore] = useState(0)
+  
+  const numPairs = 4 + level - 1;
 
-  useEffect(() => {
-    let timer: NodeJS.Timeout
-    if (gameActive && !gameComplete) {
-      timer = setTimeout(() => setTimeElapsed(timeElapsed + 1), 1000)
-    }
-    return () => clearTimeout(timer)
-  }, [timeElapsed, gameActive, gameComplete])
-
-  useEffect(() => {
-    if (flippedCards.length === 2) {
-      const [first, second] = flippedCards
-      const firstCard = cards.find((card) => card.id === first)
-      const secondCard = cards.find((card) => card.id === second)
-
-      if (firstCard && secondCard && firstCard.letter === secondCard.letter) {
-        // Match found
-        setTimeout(() => {
-          setCards((prev) =>
-            prev.map((card) => (card.id === first || card.id === second ? { ...card, isMatched: true } : card)),
-          )
-          setMatches(matches + 1)
-          setFlippedCards([])
-
-          // Calculate score bonus for quick matches
-          const timeBonus = Math.max(0, 10 - Math.floor(timeElapsed / 10))
-          const moveBonus = Math.max(0, 20 - moves)
-          setScore(score + 50 + timeBonus + moveBonus)
-
-          // Check if game is complete
-          if (matches + 1 === letters.slice(0, 4 + level).length) {
-            setGameComplete(true)
-            setGameActive(false)
-          }
-        }, 1000)
-      } else {
-        // No match
-        setTimeout(() => {
-          setCards((prev) =>
-            prev.map((card) => (card.id === first || card.id === second ? { ...card, isFlipped: false } : card)),
-          )
-          setFlippedCards([])
-        }, 1000)
-      }
-      setMoves(moves + 1)
-    }
-  }, [flippedCards, cards, matches, moves, timeElapsed, score, level])
-
-  const initializeGame = () => {
-    const gameLetters = letters.slice(0, 4 + level) // Increase difficulty with level
+  const initializeGame = useCallback((currentLevel: number) => {
+    const gameLetters = letters.slice(0, 4 + currentLevel - 1)
     const cardPairs = [...gameLetters, ...gameLetters]
     const shuffledCards = cardPairs
       .sort(() => Math.random() - 0.5)
@@ -92,32 +47,81 @@ export default function MemoryBoostGame() {
     setTimeElapsed(0)
     setGameActive(true)
     setGameComplete(false)
-  }
+  }, [])
+  
+  useEffect(() => {
+    let timer: NodeJS.Timeout
+    if (gameActive && !gameComplete) {
+      timer = setInterval(() => {
+        setTimeElapsed(t => t + 1)
+      }, 1000)
+    }
+    return () => clearInterval(timer)
+  }, [gameActive, gameComplete])
+
+  useEffect(() => {
+    if (flippedCards.length !== 2) return
+
+    const timeoutId = setTimeout(() => {
+      const [firstId, secondId] = flippedCards
+      const firstCard = cards.find((card) => card.id === firstId)
+      const secondCard = cards.find((card) => card.id === secondId)
+
+      setMoves(m => m + 1)
+
+      if (firstCard && secondCard && firstCard.letter === secondCard.letter) {
+        setCards(prev =>
+          prev.map(card =>
+            card.id === firstId || card.id === secondId ? { ...card, isMatched: true, isFlipped: false } : card
+          )
+        )
+        setMatches(m => m + 1)
+        setScore(s => {
+            const timeBonus = Math.max(0, 10 - Math.floor(timeElapsed / 10))
+            const moveBonus = Math.max(0, 20 - moves)
+            return s + 50 + timeBonus + moveBonus
+        })
+      } else {
+        setCards(prev =>
+          prev.map(card =>
+            card.id === firstId || card.id === secondId ? { ...card, isFlipped: false } : card
+          )
+        )
+      }
+      setFlippedCards([])
+    }, 800)
+    
+    return () => clearTimeout(timeoutId)
+  }, [flippedCards, cards, timeElapsed, moves])
+
+  useEffect(() => {
+    if (cards.length > 0 && matches === numPairs) {
+      setGameComplete(true)
+      setGameActive(false)
+    }
+  }, [matches, cards.length, numPairs])
 
   const flipCard = (cardId: number) => {
-    if (flippedCards.length >= 2 || flippedCards.includes(cardId)) return
+    const cardToFlip = cards.find(c => c.id === cardId);
+    if (!cardToFlip || cardToFlip.isFlipped || cardToFlip.isMatched || flippedCards.length >= 2) return
 
-    const card = cards.find((c) => c.id === cardId)
-    if (!card || card.isMatched) return
-
-    setCards((prev) => prev.map((c) => (c.id === cardId ? { ...c, isFlipped: true } : c)))
-    setFlippedCards((prev) => [...prev, cardId])
+    setCards(prev => prev.map(c => (c.id === cardId ? { ...c, isFlipped: true } : c)))
+    setFlippedCards(prev => [...prev, cardId])
   }
 
+  // This function now correctly sends the user back to the level select screen
   const resetGame = () => {
-    setCards([])
-    setFlippedCards([])
-    setMatches(0)
-    setMoves(0)
-    setTimeElapsed(0)
     setGameActive(false)
     setGameComplete(false)
-    setScore(0)
+    // Optional: reset score and level if you want a full reset
+    // setScore(0)
+    // setLevel(1)
   }
-
+  
   const nextLevel = () => {
-    setLevel(level + 1)
-    initializeGame()
+    const newLevel = level + 1
+    setLevel(newLevel)
+    initializeGame(newLevel)
   }
 
   const formatTime = (seconds: number) => {
@@ -129,10 +133,13 @@ export default function MemoryBoostGame() {
   const gridCols = Math.ceil(Math.sqrt(cards.length))
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
+    // ✨ UI FIX: Reduced main container padding
+    <div className="max-w-4xl mx-auto p-4">
       {/* Header */}
-      <div className="mb-6">
-        <div className="flex items-center gap-3 mb-4">
+      {/* ✨ UI FIX: Reduced bottom margin */}
+      <div className="mb-4">
+        {/* ✨ UI FIX: Reduced bottom margin */}
+        <div className="flex items-center gap-3 mb-2">
           <div className="w-12 h-12 bg-chart-3/10 rounded-xl flex items-center justify-center">
             <span className="text-2xl">🧩</span>
           </div>
@@ -143,27 +150,29 @@ export default function MemoryBoostGame() {
         </div>
 
         {/* Game Stats */}
-        <div className="grid md:grid-cols-4 gap-4 mb-6">
+        {/* ✨ UI FIX: Reduced bottom margin */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mb-4">
           <Card>
-            <CardContent className="p-4 text-center">
+            {/* ✨ UI FIX: Reduced padding in stat cards */}
+            <CardContent className="p-3 text-center">
               <div className="text-2xl font-bold text-chart-3">{score}</div>
               <div className="text-sm text-muted-foreground">Score</div>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4 text-center">
+            <CardContent className="p-3 text-center">
               <div className="text-2xl font-bold text-primary">{level}</div>
               <div className="text-sm text-muted-foreground">Level</div>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4 text-center">
+            <CardContent className="p-3 text-center">
               <div className="text-2xl font-bold text-secondary">{moves}</div>
               <div className="text-sm text-muted-foreground">Moves</div>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4 text-center">
+            <CardContent className="p-3 text-center">
               <div className="text-2xl font-bold">{formatTime(timeElapsed)}</div>
               <div className="text-sm text-muted-foreground">Time</div>
             </CardContent>
@@ -171,29 +180,23 @@ export default function MemoryBoostGame() {
         </div>
       </div>
 
+      {/* Start Screen */}
       {!gameActive && !gameComplete && (
         <Card className="text-center">
           <CardHeader>
             <CardTitle className="text-xl text-balance">Ready to Boost Your Memory?</CardTitle>
-            <CardDescription>
-              Flip the cards to find matching letter pairs. Try to complete it in as few moves as possible!
-            </CardDescription>
           </CardHeader>
-          <CardContent className="py-8">
-            <div className="w-24 h-24 bg-chart-3/10 rounded-full flex items-center justify-center mx-auto mb-6">
+          <CardContent className="py-6">
+            <div className="w-20 h-20 bg-chart-3/10 rounded-full flex items-center justify-center mx-auto mb-4">
               <span className="text-4xl">🧠</span>
             </div>
             <div className="space-y-4">
               <div className="flex items-center justify-center gap-4">
-                <Button variant="outline" onClick={() => setLevel(Math.max(1, level - 1))} disabled={level === 1}>
-                  -
-                </Button>
+                <Button variant="outline" onClick={() => setLevel(Math.max(1, level - 1))} disabled={level === 1}>-</Button>
                 <span className="text-lg font-medium">Level {level}</span>
-                <Button variant="outline" onClick={() => setLevel(Math.min(4, level + 1))} disabled={level === 4}>
-                  +
-                </Button>
+                <Button variant="outline" onClick={() => setLevel(Math.min(4, level + 1))} disabled={level === 4}>+</Button>
               </div>
-              <Button size="lg" onClick={initializeGame} className="bg-chart-3 text-white hover:bg-chart-3/90">
+              <Button size="lg" onClick={() => initializeGame(level)} className="bg-chart-3 text-white hover:bg-chart-3/90">
                 <span className="mr-2">⚡</span>
                 Start Game
               </Button>
@@ -202,6 +205,7 @@ export default function MemoryBoostGame() {
         </Card>
       )}
 
+      {/* ✨ UX FIX: Completion screen with clear action buttons */}
       {gameComplete && (
         <Card className="text-center">
           <CardHeader>
@@ -209,38 +213,21 @@ export default function MemoryBoostGame() {
               <span className="text-2xl">🏆</span>
               Level Complete!
             </CardTitle>
-            <CardDescription>Excellent memory work! All pairs matched successfully.</CardDescription>
           </CardHeader>
-          <CardContent className="py-8">
-            <div className="grid md:grid-cols-3 gap-4 mb-6">
+          <CardContent className="py-6">
+            <div className="grid grid-cols-3 gap-4 mb-6">
               <div className="text-center">
-                <div className="text-3xl font-bold text-chart-3">{score}</div>
+                <div className="text-2xl font-bold text-chart-3">{score}</div>
                 <div className="text-sm text-muted-foreground">Final Score</div>
               </div>
               <div className="text-center">
-                <div className="text-3xl font-bold text-primary">{moves}</div>
+                <div className="text-2xl font-bold text-primary">{moves}</div>
                 <div className="text-sm text-muted-foreground">Total Moves</div>
               </div>
               <div className="text-center">
-                <div className="text-3xl font-bold text-secondary">{formatTime(timeElapsed)}</div>
+                <div className="text-2xl font-bold text-secondary">{formatTime(timeElapsed)}</div>
                 <div className="text-sm text-muted-foreground">Time Taken</div>
               </div>
-            </div>
-
-            {/* Performance feedback */}
-            <div className="mb-6">
-              {moves <= letters.slice(0, 4 + level).length + 2 && (
-                <Badge className="bg-green-100 text-green-800 border-green-200 mr-2">
-                  <span className="mr-1">⭐</span>
-                  Perfect Memory!
-                </Badge>
-              )}
-              {timeElapsed <= 60 && (
-                <Badge className="bg-blue-100 text-blue-800 border-blue-200 mr-2">
-                  <span className="mr-1">⏰</span>
-                  Speed Demon!
-                </Badge>
-              )}
             </div>
 
             <div className="flex gap-4 justify-center">
@@ -249,47 +236,40 @@ export default function MemoryBoostGame() {
                   Next Level
                 </Button>
               )}
-              <Button onClick={initializeGame} variant="outline">
-                Play Again
+              <Button onClick={() => initializeGame(level)} variant="outline">
+                Play Again (Level {level})
               </Button>
               <Button variant="outline" onClick={resetGame}>
-                <span className="mr-2">🔄</span>
-                Back to Menu
+                Change Level
               </Button>
             </div>
           </CardContent>
         </Card>
       )}
 
+      {/* Game Grid */}
       {gameActive && (
-        <div className="space-y-6">
-          {/* Progress */}
+        // ✨ UI FIX: Reduced spacing
+        <div className="space-y-4">
           <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <span className="font-medium">
-                  Progress: {matches} of {letters.slice(0, 4 + level).length} pairs
-                </span>
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-medium">Progress: {matches} of {numPairs} pairs</span>
                 <Badge variant="outline">Level {level}</Badge>
               </div>
-              <Progress value={(matches / letters.slice(0, 4 + level).length) * 100} className="h-2" />
+              <Progress value={(matches / numPairs) * 100} className="h-2" />
             </CardContent>
           </Card>
 
-          {/* Game Grid */}
           <Card>
-            <CardContent className="p-6">
-              <div
-                className={`grid gap-4 max-w-2xl mx-auto`}
-                style={{
-                  gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))`,
-                }}
-              >
-                {cards.map((card) => (
+            {/* ✨ UI FIX: Reduced padding */}
+            <CardContent className="p-4">
+              <div className="grid gap-2 md:gap-4 max-w-2xl mx-auto" style={{ gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` }}>
+                {cards.map(card => (
                   <Button
                     key={card.id}
                     variant="outline"
-                    className={`aspect-square text-2xl font-bold h-20 transition-all duration-300 ${
+                    className={`aspect-square text-2xl font-bold h-16 md:h-20 transition-all duration-300 ${
                       card.isFlipped || card.isMatched
                         ? card.isMatched
                           ? "bg-green-100 border-green-300 text-green-800"
@@ -297,7 +277,7 @@ export default function MemoryBoostGame() {
                         : "bg-muted hover:bg-muted/80"
                     }`}
                     onClick={() => flipCard(card.id)}
-                    disabled={card.isFlipped || card.isMatched || flippedCards.length >= 2}
+                    disabled={flippedCards.length === 2 || card.isFlipped || card.isMatched}
                   >
                     {card.isFlipped || card.isMatched ? card.letter : "?"}
                   </Button>
