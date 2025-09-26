@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 
@@ -12,21 +12,14 @@ export default function FontSwitcher({ className }: FontSwitcherProps) {
   const [currentFont, setCurrentFont] = useState("default")
   const [isOpen, setIsOpen] = useState(false)
 
-  const fonts = [
+  const fonts = useMemo(() => [
     { id: "default", name: "Default Font", family: "var(--font-sans)" },
     { id: "dyslexic", name: "Dyslexic Friendly", family: "OpenDyslexic, Comic Sans MS, sans-serif" },
     { id: "comic", name: "Comic Sans", family: "Comic Sans MS, cursive" },
     { id: "arial", name: "Arial", family: "Arial, sans-serif" },
-  ]
+  ], [])
 
-  useEffect(() => {
-    // Load saved font preference
-    const savedFont = localStorage.getItem("preferred-font") || "default"
-    setCurrentFont(savedFont)
-    applyFont(savedFont)
-  }, [])
-
-  const applyFont = (fontId: string) => {
+  const applyFont = useCallback((fontId: string) => {
     const font = fonts.find((f) => f.id === fontId)
     if (font) {
       document.documentElement.style.setProperty("--font-family-override", font.family)
@@ -40,7 +33,14 @@ export default function FontSwitcher({ className }: FontSwitcherProps) {
         }
       })
     }
-  }
+  }, [fonts])
+
+  useEffect(() => {
+    // Load saved font preference
+    const savedFont = localStorage.getItem("preferred-font") || "default"
+    setCurrentFont(savedFont)
+    applyFont(savedFont)
+  }, [applyFont])
 
   const handleFontChange = (fontId: string) => {
     setCurrentFont(fontId)

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
@@ -26,8 +26,12 @@ export default function MemoryBoostGame() {
   const [level, setLevel] = useState(1)
   const [score, setScore] = useState(0)
 
+  const levelRef = useRef(level)
+  const timeElapsedRef = useRef(timeElapsed)
+  const movesRef = useRef(moves)
+
   useEffect(() => {
-    let timer: NodeJS.Timeout
+    let timer: ReturnType<typeof setTimeout>
     if (gameActive && !gameComplete) {
       timer = setTimeout(() => setTimeElapsed(timeElapsed + 1), 1000)
     }
@@ -35,46 +39,82 @@ export default function MemoryBoostGame() {
   }, [timeElapsed, gameActive, gameComplete])
 
   useEffect(() => {
-    if (flippedCards.length === 2) {
-      const [first, second] = flippedCards
-      const firstCard = cards.find((card) => card.id === first)
-      const secondCard = cards.find((card) => card.id === second)
+    levelRef.current = level
+  }, [level])
 
-      if (firstCard && secondCard && firstCard.letter === secondCard.letter) {
-        // Match found
-        setTimeout(() => {
-          setCards((prev) =>
-            prev.map((card) => (card.id === first || card.id === second ? { ...card, isMatched: true } : card)),
-          )
-          setMatches(matches + 1)
-          setFlippedCards([])
+  useEffect(() => {
+    timeElapsedRef.current = timeElapsed
+  }, [timeElapsed])
 
-          // Calculate score bonus for quick matches
-          const timeBonus = Math.max(0, 10 - Math.floor(timeElapsed / 10))
-          const moveBonus = Math.max(0, 20 - moves)
-          setScore(score + 50 + timeBonus + moveBonus)
+  useEffect(() => {
+    movesRef.current = moves
+  }, [moves])
 
-          // Check if game is complete
-          if (matches + 1 === letters.slice(0, 4 + level).length) {
+  useEffect(() => {
+    if (flippedCards.length !== 2) {
+      return
+    }
+
+    const [first, second] = flippedCards
+    const firstCard = cards.find((card) => card.id === first)
+    const secondCard = cards.find((card) => card.id === second)
+
+    if (!firstCard || !secondCard) {
+      return
+    }
+
+    let timeoutId: ReturnType<typeof setTimeout>
+
+    const incrementMoves = () => {
+      setMoves((prev) => {
+        const updatedMoves = prev + 1
+        movesRef.current = updatedMoves
+        return updatedMoves
+      })
+    }
+
+    if (firstCard.letter === secondCard.letter) {
+      // Match found
+      timeoutId = setTimeout(() => {
+        setCards((prev) =>
+          prev.map((card) => (card.id === first || card.id === second ? { ...card, isMatched: true } : card)),
+        )
+        setMatches((prev) => {
+          const updatedMatches = prev + 1
+          const totalPairs = letters.slice(0, 4 + levelRef.current).length
+
+          if (updatedMatches === totalPairs) {
             setGameComplete(true)
             setGameActive(false)
           }
-        }, 1000)
-      } else {
-        // No match
-        setTimeout(() => {
-          setCards((prev) =>
-            prev.map((card) => (card.id === first || card.id === second ? { ...card, isFlipped: false } : card)),
-          )
-          setFlippedCards([])
-        }, 1000)
-      }
-      setMoves(moves + 1)
+
+          return updatedMatches
+        })
+        setFlippedCards([])
+
+        // Calculate score bonus for quick matches
+        const timeBonus = Math.max(0, 10 - Math.floor(timeElapsedRef.current / 10))
+        const moveBonus = Math.max(0, 20 - movesRef.current)
+        setScore((prev) => prev + 50 + timeBonus + moveBonus)
+
+        incrementMoves()
+      }, 1000)
+    } else {
+      // No match
+      timeoutId = setTimeout(() => {
+        setCards((prev) =>
+          prev.map((card) => (card.id === first || card.id === second ? { ...card, isFlipped: false } : card)),
+        )
+        setFlippedCards([])
+        incrementMoves()
+      }, 1000)
     }
-  }, [flippedCards, cards, matches, moves, timeElapsed, score, level])
+
+    return () => clearTimeout(timeoutId)
+  }, [flippedCards, cards, level])
 
   const initializeGame = () => {
-    const gameLetters = letters.slice(0, 4 + level) // Increase difficulty with level
+    const gameLetters = letters.slice(0, 4 + levelRef.current) // Increase difficulty with level
     const cardPairs = [...gameLetters, ...gameLetters]
     const shuffledCards = cardPairs
       .sort(() => Math.random() - 0.5)
@@ -89,7 +129,9 @@ export default function MemoryBoostGame() {
     setFlippedCards([])
     setMatches(0)
     setMoves(0)
+    movesRef.current = 0
     setTimeElapsed(0)
+    timeElapsedRef.current = 0
     setGameActive(true)
     setGameComplete(false)
   }
@@ -116,7 +158,11 @@ export default function MemoryBoostGame() {
   }
 
   const nextLevel = () => {
-    setLevel(level + 1)
+    setLevel((prev) => {
+      const updatedLevel = prev + 1
+      levelRef.current = updatedLevel
+      return updatedLevel
+    })
     initializeGame()
   }
 

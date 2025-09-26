@@ -137,10 +137,10 @@ export default function AIReadingCoachPro() {
   }, [passageTokens, transcriptTokens])
 
   // STT (Web Speech API)
-  const recognitionRef = useRef<any>(null)
+  const recognitionRef = useRef<unknown>(null)
   useEffect(() => {
     if (typeof window === "undefined") return
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    const SpeechRecognition = (window as { SpeechRecognition?: typeof window.SpeechRecognition }).SpeechRecognition || (window as { webkitSpeechRecognition?: typeof window.SpeechRecognition }).webkitSpeechRecognition
     if (!SpeechRecognition) return
 
     const rec = new SpeechRecognition()
@@ -148,13 +148,11 @@ export default function AIReadingCoachPro() {
     rec.interimResults = true
     rec.lang = "en-US"
 
-    rec.onresult = (event: any) => {
-      let interim = ""
+    rec.onresult = (event: SpeechRecognitionEvent) => {
       let final = ""
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const res = event.results[i]
         if (res.isFinal) final += res[0].transcript
-        else interim += res[0].transcript
       }
       setTranscript((prev) => (final ? (prev ? prev + " " : "") + final.trim() : prev))
     }
@@ -185,7 +183,7 @@ export default function AIReadingCoachPro() {
   }
 
   // TTS model reading with karaoke-style highlight
-  const ttsTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const ttsTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const playModelReading = () => {
     if (isModelReading) {
       window.speechSynthesis.cancel()

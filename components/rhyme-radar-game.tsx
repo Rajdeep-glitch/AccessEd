@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
@@ -16,37 +16,36 @@ const rhymeSets: RhymeSet[] = [
   {
     words: ["cat", "bat", "hat", "dog"],
     oddOneOut: 3,
-    explanation: "Cat, bat, and hat all rhyme with the 'at' sound. Dog doesn't rhyme with them.",
+    explanation: "Cat, bat, and hat all rhyme with the &apos;at&apos; sound. Dog doesn&apos;t rhyme with them.",
   },
   {
     words: ["sun", "fun", "run", "car"],
     oddOneOut: 3,
-    explanation: "Sun, fun, and run all rhyme with the 'un' sound. Car doesn't rhyme with them.",
+    explanation: "Sun, fun, and run all rhyme with the &apos;un&apos; sound. Car doesn&apos;t rhyme with them.",
   },
   {
     words: ["tree", "bee", "see", "book"],
     oddOneOut: 3,
-    explanation: "Tree, bee, and see all rhyme with the 'ee' sound. Book doesn't rhyme with them.",
+    explanation: "Tree, bee, and see all rhyme with the &apos;ee&apos; sound. Book doesn&apos;t rhyme with them.",
   },
   {
     words: ["ball", "tall", "wall", "fish"],
     oddOneOut: 3,
-    explanation: "Ball, tall, and wall all rhyme with the 'all' sound. Fish doesn't rhyme with them.",
+    explanation: "Ball, tall, and wall all rhyme with the &apos;all&apos; sound. Fish doesn&apos;t rhyme with them.",
   },
   {
     words: ["cake", "lake", "make", "bird"],
     oddOneOut: 3,
-    explanation: "Cake, lake, and make all rhyme with the 'ake' sound. Bird doesn't rhyme with them.",
+    explanation: "Cake, lake, and make all rhyme with the &apos;ake&apos; sound. Bird doesn&apos;t rhyme with them.",
   },
   {
     words: ["night", "light", "bright", "house"],
     oddOneOut: 3,
-    explanation: "Night, light, and bright all rhyme with the 'ight' sound. House doesn't rhyme with them.",
+    explanation: "Night, light, and bright all rhyme with the &apos;ight&apos; sound. House doesn&apos;t rhyme with them.",
   },
 ]
 
 export default function RhymeRadarGame() {
-  const [currentLevel, setCurrentLevel] = useState(1)
   const [currentSet, setCurrentSet] = useState(0)
   const [score, setScore] = useState(0)
   const [timeLeft, setTimeLeft] = useState(30)
@@ -59,14 +58,14 @@ export default function RhymeRadarGame() {
   const [gameComplete, setGameComplete] = useState(false)
 
   useEffect(() => {
-    let timer: NodeJS.Timeout
+    let timer: ReturnType<typeof setTimeout>
     if (gameActive && timeLeft > 0 && !showResult) {
       timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000)
     } else if (timeLeft === 0 && gameActive) {
       endGame()
     }
     return () => clearTimeout(timer)
-  }, [timeLeft, gameActive, showResult])
+  }, [timeLeft, gameActive, showResult, endGame])
 
   const startGame = () => {
     setGameActive(true)
@@ -112,13 +111,13 @@ export default function RhymeRadarGame() {
     }
   }
 
-  const endGame = () => {
+  const endGame = useCallback(() => {
     setGameActive(false)
     setGameComplete(true)
     if (score > highScore) {
       setHighScore(score)
     }
-  }
+  }, [score, highScore])
 
   const resetGame = () => {
     setGameActive(false)

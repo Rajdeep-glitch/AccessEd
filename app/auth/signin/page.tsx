@@ -8,35 +8,38 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useToast } from "@/components/ui/use-toast"
 
 export default function SignInPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const router = useRouter()
+  const { toast } = useToast()
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
 
-    setTimeout(() => {
-      setIsLoading(false)
-      // Extract name from email for demo purposes
-      const userName = email.split("@")[0].replace(/[^a-zA-Z]/g, "") || "Student"
-      // Store user data in localStorage for demo
-      localStorage.setItem(
-        "user",
-        JSON.stringify({
-          name: userName.charAt(0).toUpperCase() + userName.slice(1),
-          email: email,
-          role: "student",
-        }),
-      )
-      localStorage.setItem("isAuthenticated", "true")
+    try {
+      const base = process.env.NEXT_PUBLIC_API_URL || ""
+      const resp = await fetch(`${base}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+        credentials: "include",
+      })
+      const data = await resp.json()
+      if (!resp.ok || !data?.user) {
+        toast({ title: "Sign in failed", description: data?.error || "Please try again.", variant: "destructive" })
+        setIsLoading(false)
+        return
+      }
       window.location.href = "/"
-    }, 1000)
+    } catch {
+      toast({ title: "Network error", description: "Please try again.", variant: "destructive" })
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -115,7 +118,7 @@ export default function SignInPage() {
 
               <div className="text-center">
                 <p className="text-sm text-muted-foreground">
-                  Don't have an account?{" "}
+                  Don&apos;t have an account?{" "}
                   <Link href="/auth/signup" className="text-primary hover:underline font-medium">
                     Sign up here
                   </Link>
@@ -124,19 +127,6 @@ export default function SignInPage() {
             </form>
           </CardContent>
         </Card>
-
-        <div className="mt-6 text-center">
-          <p className="text-xs text-muted-foreground">
-            By signing in, you agree to our{" "}
-            <Link href="/terms" className="text-primary hover:underline">
-              Terms of Service
-            </Link>{" "}
-            and{" "}
-            <Link href="/privacy" className="text-primary hover:underline">
-              Privacy Policy
-            </Link>
-          </p>
-        </div>
       </div>
     </div>
   )

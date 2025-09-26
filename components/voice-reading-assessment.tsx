@@ -1,11 +1,21 @@
 "use client"
 
-import { useState, useRef, useEffect, useMemo } from "react"
+import { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { Mic, MicOff, Pause, RotateCcw, Volume2, CheckCircle, AlertCircle, Star, Trophy, BookOpen } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Separator } from "@/components/ui/separator"
+import { toast } from "sonner"
+import {
+  Mic, MicOff, Pause, RotateCcw, Volume2, CheckCircle, AlertCircle, Star, Trophy, BookOpen,
+  Download, Copy, Languages, Zap, Eye, EyeOff, Settings
+} from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
 
 interface ReadingPassage {
   id: string
@@ -26,13 +36,45 @@ interface ReadingResult {
   improvements: string[]
 }
 
-// --- Utilities borrowed from Coach Pro ---
+interface PronunciationFeedback {
+  word: string
+  score: number
+  suggestion?: string
+  phoneme?: string
+}
+
+interface LiveAnalysis {
+  accuracy: number
+  wpm: number
+  pronunciationScore: number
+  feedback: PronunciationFeedback[]
+  confidence: number
+}
+
+interface VoiceSettings {
+  language: string
+  showAnalysis: boolean
+  showWaveform: boolean
+  continuousMode: boolean
+}
+
+// Language configurations for better cross-browser support
+const LANGUAGE_OPTIONS = [
+  { code: 'en-US', name: 'English (US)', accent: 'American' },
+  { code: 'en-GB', name: 'English (UK)', accent: 'British' },
+  { code: 'en-AU', name: 'English (AU)', accent: 'Australian' },
+  { code: 'en-IN', name: 'English (IN)', accent: 'Indian' },
+  { code: 'en-CA', name: 'English (CA)', accent: 'Canadian' },
+]
+
+// Enhanced tokenize with better punctuation handling
 function tokenize(text: string) {
   return text
     .toLowerCase()
-    .replace(/[^a-z0-9\s']/g, " ")
+    .replace(/[^\w\s'-]/g, " ")
     .split(/\s+/)
     .filter(Boolean)
+    .map(word => word.replace(/['-]+$/, ''))
 }
 
 function levenshtein(a: string[], b: string[]) {
@@ -46,6 +88,44 @@ function levenshtein(a: string[], b: string[]) {
     }
   }
   return dp[a.length][b.length]
+}
+
+// Enhanced pronunciation analysis with phoneme-level feedback
+function analyzePronunciation(spokenWords: string[], targetWords: string[]): PronunciationFeedback[] {
+  const feedback: PronunciationFeedback[] = []
+
+  spokenWords.forEach((spoken, index) => {
+    if (index >= targetWords.length) return
+
+    const target = targetWords[index]
+    const distance = levenshtein(tokenize(spoken), tokenize(target))
+
+    // Simple phoneme-based scoring (can be enhanced with actual phoneme libraries)
+    let score = Math.max(0, 100 - (distance * 25))
+    let suggestion = ''
+
+    // Basic phonetic analysis patterns
+    if (score < 70) {
+      if (spoken.includes('th') && !target.includes('th')) {
+        suggestion = 'Try pronouncing "th" more clearly'
+      } else if (spoken.length > target.length + 2) {
+        suggestion = 'You may have added extra sounds'
+      } else if (spoken.length < target.length - 1) {
+        suggestion = 'Try pronouncing all sounds in the word'
+      } else {
+        suggestion = 'Listen carefully and repeat'
+      }
+    }
+
+    feedback.push({
+      word: spoken,
+      score,
+      suggestion: score < 80 ? suggestion : undefined,
+      phoneme: score < 60 ? target : undefined
+    })
+  })
+
+  return feedback
 }
 
 const readingPassages: ReadingPassage[] = [
@@ -75,21 +155,46 @@ const readingPassages: ReadingPassage[] = [
   },
 ]
 
-export default function VoiceReadingAssessment() {
+export default function VoiceReadingAssessment({ onPlan }: { onPlan?: () => void }) {
   const [selectedPassage, setSelectedPassage] = useState<ReadingPassage | null>(null)
 
-  // Existing recording states
-  const [isRecording, setIsRecording] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
-  const [hasRecorded, setHasRecorded] = useState(false);
-  const [showResults, setShowResults] = useState(false);
-  const [readingStarted, setReadingStarted] = useState(false);
+  // Enhanced recording states
+  const [isRecording, setIsRecording] = useState(false)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [recordingTime, setRecordingTime] = useState(0)
+  const [hasRecorded, setHasRecorded] = useState(false)
+  const [showResults, setShowResults] = useState(false)
+  const [readingStarted, setReadingStarted] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
 
-  // New: live transcript + metrics
+  // Enhanced live transcript and analysis
   const [transcript, setTranscript] = useState("")
-  const [startTime, setStartTime] = useState(null as number | null)
+  const [liveTranscript, setLiveTranscript] = useState("")
+  const [startTime, setStartTime] = useState<number | null>(null)
   const [highlightIndex, setHighlightIndex] = useState(0)
+  const [liveAnalysis, setLiveAnalysis] = useState<LiveAnalysis | null>(null)
+
+  // Voice settings
+  const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>({
+    language: 'en-US',
+    showAnalysis: true,
+    showWaveform: true,
+    continuousMode: true
+  })
+
+  // Audio visualization
+  const [audioData, setAudioData] = useState<number[]>([])
+  const [isMicPermissionGranted, setIsMicPermissionGranted] = useState(false)
+
+  // Refs
+  const recognitionRef = useRef<any>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  // In the browser, setTimeout returns a number; this type works in both DOM and Node typings
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const animationFrameRef = useRef<number | null>(null)
 
   const passageTokens = useMemo(() => tokenize(selectedPassage?.text || ""), [selectedPassage?.text])
   const transcriptTokens = useMemo(() => tokenize(transcript), [transcript])
@@ -111,6 +216,73 @@ export default function VoiceReadingAssessment() {
     if (minutes <= 0) return 0
     return Math.round(transcriptTokens.length / minutes)
   }, [startTime, transcriptTokens.length])
+
+  // Enhanced live analysis with pronunciation feedback
+  const liveAnalysisData = useMemo(() => {
+    if (!transcript || !selectedPassage) return null
+
+    const feedback = analyzePronunciation(transcriptTokens, passageTokens.slice(0, transcriptTokens.length))
+    const avgPronunciationScore = feedback.length > 0
+      ? feedback.reduce((sum, f) => sum + f.score, 0) / feedback.length
+      : 0
+
+    const confidence = transcriptTokens.length > 0 ? Math.min(100, transcriptTokens.length * 10) : 0
+
+    return {
+      accuracy,
+      wpm,
+      pronunciationScore: Math.round(avgPronunciationScore),
+      feedback,
+      confidence
+    }
+  }, [transcript, selectedPassage, accuracy, wpm, transcriptTokens, passageTokens])
+
+  // Update live analysis state
+  useEffect(() => {
+    setLiveAnalysis(liveAnalysisData)
+  }, [liveAnalysisData])
+
+  // Audio visualization functions
+  const startAudioVisualization = useCallback(async (stream: MediaStream) => {
+    if (!voiceSettings.showWaveform) return
+
+    try {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
+      analyserRef.current = audioContextRef.current.createAnalyser()
+      const source = audioContextRef.current.createMediaStreamSource(stream)
+      analyserRef.current.fftSize = 256
+      source.connect(analyserRef.current)
+
+      const bufferLength = analyserRef.current.frequencyBinCount
+      const dataArray = new Uint8Array(bufferLength)
+
+      const updateVisualization = () => {
+        if (!analyserRef.current) return
+
+        analyserRef.current.getByteFrequencyData(dataArray)
+        const normalizedData = Array.from(dataArray).map(value => value / 255)
+        setAudioData(normalizedData.slice(0, 32)) // Use first 32 frequency bins
+
+        animationFrameRef.current = requestAnimationFrame(updateVisualization)
+      }
+
+      updateVisualization()
+    } catch (error) {
+      console.warn('Audio visualization not supported:', error)
+    }
+  }, [voiceSettings.showWaveform])
+
+  const stopAudioVisualization = useCallback(() => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current)
+      animationFrameRef.current = null
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close()
+      audioContextRef.current = null
+    }
+    setAudioData([])
+  }, [])
 
   // Greedy highlight advance based on recognized tokens
   useEffect(() => {
@@ -146,9 +318,7 @@ export default function VoiceReadingAssessment() {
   }, [passageTokens, transcriptTokens])
 
   // MediaRecorder for raw audio (kept for demo parity)
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const audioChunksRef = useRef<Blob[]>([])
-  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  // (refs already declared above)
 
   useEffect(() => {
     if (isRecording && recordingTime < 120) {
@@ -162,67 +332,157 @@ export default function VoiceReadingAssessment() {
     }
   }, [isRecording, recordingTime])
 
-  // Web Speech API recognition (from Coach Pro)
-  const recognitionRef = useRef<any>(null)
+  // Enhanced Web Speech API recognition with better error handling
   useEffect(() => {
     if (typeof window === "undefined") return
+
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (!SpeechRecognition) return
+    if (!SpeechRecognition) {
+      console.warn('Speech Recognition not supported in this browser')
+      return
+    }
 
     const rec = new SpeechRecognition()
-    rec.continuous = true
+    rec.continuous = voiceSettings.continuousMode
     rec.interimResults = true
-    rec.lang = "en-US"
+    rec.lang = voiceSettings.language
+    rec.maxAlternatives = 1
+
+    rec.onstart = () => {
+      setIsProcessing(false)
+    }
 
     rec.onresult = (event: any) => {
-      let final = ""
+      let finalTranscript = ""
+      let interimTranscript = ""
+      let lastSegment = ""
+
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        const res = event.results[i]
-        if (res.isFinal) final += res[0].transcript
+        const result = event.results[i]
+        const segment = result[0].transcript
+        lastSegment = segment
+
+        if (result.isFinal) {
+          finalTranscript += segment
+        } else {
+          interimTranscript += segment
+        }
       }
-      if (final) setTranscript((prev) => (prev ? prev + " " : "") + final.trim())
+
+      if (finalTranscript) {
+        setTranscript(prev => (prev ? prev + " " : "") + finalTranscript.trim())
+      }
+
+      // Combine existing saved transcript with any new final and interim text
+      setLiveTranscript(`${(transcript ? transcript + " " : "")}${finalTranscript.trim()} ${interimTranscript || lastSegment}`.trim())
+    }
+
+    rec.onerror = (event: any) => {
+      console.error('Speech recognition error:', event.error)
+      setIsProcessing(false)
+
+      if (event.error === 'not-allowed') {
+        toast.error('Microphone access denied. Please allow microphone access and try again.')
+        setIsMicPermissionGranted(false)
+      } else if (event.error === 'no-speech') {
+        toast.warning('No speech detected. Please speak clearly.')
+      } else {
+        toast.error(`Speech recognition error: ${event.error}`)
+      }
     }
 
     rec.onend = () => {
-      setIsRecording(false)
+      setIsProcessing(false)
+      if (isRecording && voiceSettings.continuousMode) {
+        // Restart recognition for continuous mode
+        try {
+          rec.start()
+        } catch (error) {
+          console.warn('Failed to restart recognition:', error)
+        }
+      }
     }
 
     recognitionRef.current = rec
-  }, [])
+  }, [voiceSettings.language, voiceSettings.continuousMode, isRecording])
 
   const startRecording = async () => {
     try {
-      // Start MediaRecorder (optional)
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mediaRecorder = new MediaRecorder(stream)
+      setIsProcessing(true)
+      toast.info('Requesting microphone access...')
+
+      // Request microphone access
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 44100
+        }
+      })
+
+      setIsMicPermissionGranted(true)
+      toast.success('Microphone access granted!')
+
+      // Start audio visualization
+      await startAudioVisualization(stream)
+
+      // Setup MediaRecorder
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4'
+      })
       mediaRecorderRef.current = mediaRecorder
       audioChunksRef.current = []
+
       mediaRecorder.ondataavailable = (event) => {
-        audioChunksRef.current.push(event.data)
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data)
+        }
       }
+
       mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/wav" })
-        // audioBlob could be uploaded to a server later
+        const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType })
         setHasRecorded(true)
         stream.getTracks().forEach((track) => track.stop())
+        stopAudioVisualization()
       }
-      mediaRecorder.start()
 
-      // Start STT recognition
+      mediaRecorder.start(1000) // Collect data every second
+
+      // Start speech recognition
       if (!recognitionRef.current) {
-        alert("Speech recognition is not supported in this browser.")
-      } else {
-        setTranscript("")
-        setStartTime(Date.now())
-        recognitionRef.current.start()
+        toast.error('Speech recognition is not supported in this browser.')
+        setIsProcessing(false)
+        return
       }
+
+      setTranscript("")
+      setLiveTranscript("")
+      setStartTime(Date.now())
+      setHighlightIndex(0)
+
+      recognitionRef.current.start()
 
       setIsRecording(true)
       setRecordingTime(0)
       setReadingStarted(true)
+      setIsProcessing(false)
+
     } catch (error) {
       console.error("Error accessing microphone:", error)
-      alert("Please allow microphone access to use voice reading assessment.")
+      setIsProcessing(false)
+      setIsMicPermissionGranted(false)
+
+      if (error instanceof DOMException) {
+        if (error.name === 'NotAllowedError') {
+          toast.error('Microphone access denied. Please allow microphone access in your browser settings.')
+        } else if (error.name === 'NotFoundError') {
+          toast.error('No microphone found. Please check your audio devices.')
+        } else {
+          toast.error(`Audio error: ${error.message}`)
+        }
+      } else {
+        toast.error('Failed to start recording. Please try again.')
+      }
     }
   }
 
@@ -233,7 +493,55 @@ export default function VoiceReadingAssessment() {
     if (recognitionRef.current) {
       try { recognitionRef.current.stop() } catch {}
     }
+
+    stopAudioVisualization()
     setIsRecording(false)
+    setLiveTranscript(transcript)
+    setIsProcessing(false)
+
+    if (transcript) {
+      toast.success('Recording completed! Analysis ready.')
+    }
+  }
+
+  // Utility functions for transcript actions
+  const downloadTranscript = () => {
+    if (!transcript) {
+      toast.error('No transcript available to download')
+      return
+    }
+
+    const blob = new Blob([transcript], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `reading-transcript-${new Date().toISOString().split('T')[0]}.txt`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    toast.success('Transcript downloaded!')
+  }
+
+  const copyTranscriptToClipboard = async () => {
+    if (!transcript) {
+      toast.error('No transcript available to copy')
+      return
+    }
+
+    try {
+      await navigator.clipboard.writeText(transcript)
+      toast.success('Transcript copied to clipboard!')
+    } catch (error) {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea')
+      textArea.value = transcript
+      document.body.appendChild(textArea)
+      textArea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textArea)
+      toast.success('Transcript copied to clipboard!')
+    }
   }
 
   const playModelReading = () => {
@@ -289,6 +597,17 @@ export default function VoiceReadingAssessment() {
   }
 
   const resetAssessment = () => {
+    // Stop all ongoing processes
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop()
+    }
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop() } catch {}
+    }
+    stopAudioVisualization()
+    window.speechSynthesis.cancel()
+
+    // Reset all state
     setSelectedPassage(null)
     setIsRecording(false)
     setIsPlaying(false)
@@ -296,11 +615,14 @@ export default function VoiceReadingAssessment() {
     setHasRecorded(false)
     setShowResults(false)
     setReadingStarted(false)
+    setIsProcessing(false)
     setTranscript("")
+    setLiveTranscript("")
     setStartTime(null)
     setHighlightIndex(0)
-    if (recognitionRef.current) try { recognitionRef.current.stop() } catch {}
-    window.speechSynthesis.cancel()
+    setLiveAnalysis(null)
+    setAudioData([])
+    setIsMicPermissionGranted(false)
   }
 
   const formatTime = (seconds: number) => {
@@ -441,6 +763,26 @@ export default function VoiceReadingAssessment() {
           <Button onClick={() => setSelectedPassage(null)} className="bg-chart-2 text-white hover:bg-chart-2/90">
             Try Another Passage
           </Button>
+          <Button
+            onClick={() => {
+              try {
+                const plan = {
+                  recommended: (results.accuracy < 85 || results.wordsPerMinute < 60) ? "sound-match" : "story-scramble",
+                  reasons: [
+                    results.accuracy < 85 ? "Accuracy below target — practice phoneme discrimination." : "Sequencing practice to build comprehension.",
+                    `WPM: ${results.wordsPerMinute}, Accuracy: ${results.accuracy}%`,
+                  ],
+                  focus: selectedPassage?.focusAreas || [],
+                  timestamp: Date.now(),
+                }
+                localStorage.setItem("ai.learningPlan", JSON.stringify(plan))
+              } catch {}
+              if (onPlan) onPlan()
+            }}
+            className="bg-primary text-white hover:bg-primary/90"
+          >
+            Generate Plan
+          </Button>
           <Button variant="outline" onClick={resetAssessment}>
             <RotateCcw className="w-4 h-4 mr-2" />
             Start Over
@@ -450,19 +792,143 @@ export default function VoiceReadingAssessment() {
     )
   }
 
+  // Audio Waveform Visualization Component
+  const AudioWaveform = () => {
+    if (!voiceSettings.showWaveform || !isRecording || audioData.length === 0) return null
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="flex items-center justify-center gap-1 h-16 mb-4 bg-gradient-to-r from-primary/5 to-accent/5 rounded-xl border"
+      >
+        {audioData.map((value, index) => (
+          <motion.div
+            key={index}
+            className="bg-gradient-to-t from-primary to-accent rounded-full min-w-[3px]"
+            animate={{
+              height: `${Math.max(4, value * 60)}px`,
+              opacity: value > 0.1 ? 1 : 0.3
+            }}
+            transition={{ duration: 0.1 }}
+          />
+        ))}
+      </motion.div>
+    )
+  }
+
+  // Live Analysis Display Component
+  const LiveAnalysisDisplay = () => {
+    if (!voiceSettings.showAnalysis || !liveAnalysis) return null
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"
+      >
+        <Card className="text-center">
+          <CardContent className="pt-4">
+            <div className="text-2xl font-bold text-primary">{liveAnalysis.accuracy}%</div>
+            <div className="text-xs text-muted-foreground">Accuracy</div>
+          </CardContent>
+        </Card>
+        <Card className="text-center">
+          <CardContent className="pt-4">
+            <div className="text-2xl font-bold text-chart-2">{liveAnalysis.wpm}</div>
+            <div className="text-xs text-muted-foreground">WPM</div>
+          </CardContent>
+        </Card>
+        <Card className="text-center">
+          <CardContent className="pt-4">
+            <div className="text-2xl font-bold text-secondary">{liveAnalysis.pronunciationScore}%</div>
+            <div className="text-xs text-muted-foreground">Pronunciation</div>
+          </CardContent>
+        </Card>
+        <Card className="text-center">
+          <CardContent className="pt-4">
+            <div className="text-2xl font-bold text-accent">{liveAnalysis.confidence}%</div>
+            <div className="text-xs text-muted-foreground">Confidence</div>
+          </CardContent>
+        </Card>
+      </motion.div>
+    )
+  }
+
+  // Voice Settings Component
+  const VoiceSettingsPanel = () => (
+    <Card className="mb-6">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Settings className="w-5 h-5" />
+          Voice Settings
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-medium">Language/Accent</label>
+          <Select
+            value={voiceSettings.language}
+            onValueChange={(value) => setVoiceSettings(prev => ({ ...prev, language: value }))}
+          >
+            <SelectTrigger className="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LANGUAGE_OPTIONS.map((lang) => (
+                <SelectItem key={lang.code} value={lang.code}>
+                  {lang.name} ({lang.accent})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-medium">Show Live Analysis</label>
+          <Switch
+            checked={voiceSettings.showAnalysis}
+            onCheckedChange={(checked) => setVoiceSettings(prev => ({ ...prev, showAnalysis: checked }))}
+          />
+        </div>
+
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-medium">Show Waveform</label>
+          <Switch
+            checked={voiceSettings.showWaveform}
+            onCheckedChange={(checked) => setVoiceSettings(prev => ({ ...prev, showWaveform: checked }))}
+          />
+        </div>
+
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-medium">Continuous Mode</label>
+          <Switch
+            checked={voiceSettings.continuousMode}
+            onCheckedChange={(checked) => setVoiceSettings(prev => ({ ...prev, continuousMode: checked }))}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  )
+
   if (selectedPassage) {
     const progress = Math.min(100, Math.round((highlightIndex / Math.max(1, passageTokens.length)) * 100))
 
     return (
-      <div className="max-w-4xl mx-auto p-6">
-        <div className="mb-6">
+      <div className="max-w-4xl mx-auto p-4 md:p-6">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6"
+        >
           <div className="flex items-center gap-3 mb-4">
             <Button variant="outline" size="sm" onClick={() => setSelectedPassage(null)}>
               ← Back
             </Button>
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-chart-2/10 rounded-lg flex items-center justify-center">
-                <Mic className="w-4 h-4 text-chart-2" />
+              <div className="w-8 h-8 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center">
+                <Mic className="w-4 h-4 text-white" />
               </div>
               <div>
                 <h1 className="text-xl font-bold text-balance">{selectedPassage.title}</h1>
@@ -470,217 +936,531 @@ export default function VoiceReadingAssessment() {
               </div>
             </div>
           </div>
-        </div>
+        </motion.div>
 
-        {/* Reading Passage with karaoke highlighting */}
+        {/* Voice Settings */}
+        <VoiceSettingsPanel />
+
+        {/* Live Analysis */}
+        <LiveAnalysisDisplay />
+
+        {/* Reading Passage with enhanced highlighting */}
         <Card className="mb-6">
           <CardHeader>
             <CardTitle className="text-center text-balance">Read This Passage Aloud</CardTitle>
-            <CardDescription className="text-center">Click the microphone to start, then read clearly at your pace</CardDescription>
+            <CardDescription className="text-center">
+              Click the microphone to start recording, then read clearly at your natural pace
+            </CardDescription>
           </CardHeader>
           <CardContent className="py-6">
+            {/* Audio Waveform */}
+            <AudioWaveform />
+
+            {/* Reading Progress */}
+            <div className="mb-4">
+              <div className="flex justify-between text-sm text-muted-foreground mb-2">
+                <span>Progress</span>
+                <span>{progress}%</span>
+              </div>
+              <Progress value={progress} className="h-2" />
+            </div>
+
             <div className="text-lg leading-8 text-center max-w-2xl mx-auto mb-6">
-              <p>
-                {passageTokens.map((t, i) => {
-                  const isDone = i < highlightIndex
-                  const isCurrent = i === highlightIndex
-                  const err = alignment.errors[i] || 0
-                  const maxErr = 3
-                  const alpha = Math.max(0, Math.min(1, err / maxErr))
-                  const heat = err > 0 && !isDone && !isCurrent ? `rgba(255, 0, 0, ${0.18 + 0.22 * alpha})` : undefined
-                  return (
-                    <span
-                      key={i}
-                      className={
-                        isDone
-                          ? "bg-green-200/60 text-foreground rounded px-1"
-                          : isCurrent
-                          ? "bg-yellow-200/60 text-foreground rounded px-1"
-                          : "rounded px-1"
-                      }
-                      style={{ backgroundColor: !isDone && !isCurrent ? heat : undefined }}
-                    >
-                      {t}{" "}
-                    </span>
-                  )
-                })}
-              </p>
+              <AnimatePresence mode="wait">
+                <motion.p
+                  key={highlightIndex}
+                  initial={{ opacity: 0.8 }}
+                  animate={{ opacity: 1 }}
+                  className="transition-all duration-300"
+                >
+                  {passageTokens.map((t, i) => {
+                    const isDone = i < highlightIndex
+                    const isCurrent = i === highlightIndex
+                    const err = alignment.errors[i] || 0
+                    const maxErr = 3
+                    const alpha = Math.max(0, Math.min(1, err / maxErr))
+
+                    return (
+                      <motion.span
+                        key={i}
+                        className={`rounded px-1 transition-all duration-300 ${
+                          isDone
+                            ? "bg-green-200/60 text-foreground"
+                            : isCurrent
+                            ? "bg-yellow-200/60 text-foreground shadow-lg"
+                            : err > 0
+                            ? "bg-red-100/60 text-foreground"
+                            : ""
+                        }`}
+                        animate={{
+                          scale: isCurrent ? 1.05 : 1,
+                          backgroundColor: err > 0 && !isDone && !isCurrent
+                            ? `rgba(255, 0, 0, ${0.18 + 0.22 * alpha})`
+                            : undefined
+                        }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        {t}{" "}
+                      </motion.span>
+                    )
+                  })}
+                </motion.p>
+              </AnimatePresence>
             </div>
 
             {/* Focus Areas */}
             <div className="flex flex-wrap gap-2 justify-center mb-6">
               {selectedPassage.focusAreas.map((area, index) => (
-                <Badge key={index} variant="outline">
+                <Badge key={index} variant="outline" className="text-xs">
                   {area}
                 </Badge>
               ))}
             </div>
 
-            {/* Live metrics */}
-            <div className="grid md:grid-cols-4 gap-4 mb-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-primary">{wpm}</div>
-                <div className="text-xs text-muted-foreground">Words / Min</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-chart-2">{accuracy}%</div>
-                <div className="text-xs text-muted-foreground">Accuracy</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-secondary">{transcriptTokens.length}</div>
-                <div className="text-xs text-muted-foreground">Words Read</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-accent">{progress}%</div>
-                <div className="text-xs text-muted-foreground">Progress</div>
-              </div>
-            </div>
-            <Progress value={progress} className="h-2 mb-4" />
-
-            {/* Controls */}
-            <div className="flex flex-col items-center gap-4">
+            {/* Enhanced Controls */}
+            <div className="flex flex-col items-center gap-6">
+              {/* Action Buttons */}
               <div className="flex items-center gap-4">
-                <Button variant="outline" onClick={playModelReading} disabled={isRecording}>
+                <Button
+                  variant="outline"
+                  onClick={playModelReading}
+                  disabled={isRecording || isProcessing}
+                  className="hover:bg-primary/5"
+                >
                   {isPlaying ? <Pause className="w-4 h-4 mr-2" /> : <Volume2 className="w-4 h-4 mr-2" />}
-                  {isPlaying ? "Stop" : "Listen First"}
+                  {isPlaying ? "Stop Listening" : "Listen First"}
                 </Button>
+              </div>
 
+              {/* Enhanced Mic Button */}
+              <motion.div
+                whileHover={!isProcessing ? { scale: 1.05 } : {}}
+                whileTap={!isProcessing ? { scale: 0.95 } : {}}
+              >
                 <Button
                   size="lg"
                   onClick={isRecording ? stopRecording : startRecording}
-                  className={`${isRecording ? "bg-red-600 hover:bg-red-700 text-white" : "bg-chart-2 hover:bg-chart-2/90 text-white"}`}
-                  disabled={isPlaying}
+                  disabled={isProcessing || isPlaying}
+                  className={`relative overflow-hidden px-8 py-4 text-lg font-semibold transition-all duration-300 ${
+                    isRecording
+                      ? "bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/30"
+                      : isProcessing
+                      ? "bg-gray-400 text-white cursor-not-allowed"
+                      : "bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-white shadow-lg hover:shadow-xl"
+                  }`}
                 >
-                  {isRecording ? <MicOff className="w-5 h-5 mr-2" /> : <Mic className="w-5 h-5 mr-2" />}
-                  {isRecording ? "Stop Recording" : "Start Reading"}
+                  <motion.div
+                    animate={isRecording ? {
+                      scale: [1, 1.2, 1],
+                      rotate: [0, 10, -10, 0]
+                    } : {}}
+                    transition={{
+                      duration: 2,
+                      repeat: isRecording ? Infinity : 0,
+                      ease: "easeInOut"
+                    }}
+                    className="flex items-center gap-3"
+                  >
+                    {isProcessing ? (
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : isRecording ? (
+                      <MicOff className="w-6 h-6" />
+                    ) : (
+                      <Mic className="w-6 h-6" />
+                    )}
+                    <span>
+                      {isProcessing
+                        ? "Initializing..."
+                        : isRecording
+                        ? "Stop Recording"
+                        : "Start Reading"
+                      }
+                    </span>
+                  </motion.div>
+
+                  {/* Recording Pulse Effect */}
+                  {isRecording && (
+                    <motion.div
+                      className="absolute inset-0 bg-red-600 rounded-md"
+                      animate={{
+                        scale: [1, 1.5, 1],
+                        opacity: [0.3, 0, 0.3]
+                      }}
+                      transition={{
+                        duration: 1.5,
+                        repeat: Infinity,
+                        ease: "easeInOut"
+                      }}
+                    />
+                  )}
                 </Button>
-              </div>
+              </motion.div>
 
-              {isRecording && (
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-red-600 mb-2">{formatTime(recordingTime)}</div>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <div className="w-2 h-2 bg-red-600 rounded-full animate-pulse"></div>
-                    Recording... Speak clearly and take your time
-                  </div>
-                </div>
-              )}
+              {/* Recording Status */}
+              <AnimatePresence>
+                {isRecording && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="text-center"
+                  >
+                    <div className="text-2xl font-bold text-red-600 mb-2 font-mono">
+                      {formatTime(recordingTime)}
+                    </div>
+                    <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                      <motion.div
+                        className="w-3 h-3 bg-red-600 rounded-full"
+                        animate={{ opacity: [1, 0.3, 1] }}
+                        transition={{ duration: 1.5, repeat: Infinity }}
+                      />
+                      Recording... Speak clearly and take your time
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-              {hasRecorded && !isRecording && (
-                <div className="text-center">
-                  <div className="flex items-center gap-2 text-green-600 mb-4">
-                    <CheckCircle className="w-5 h-5" />
-                    <span>Recording complete! Ready for analysis.</span>
-                  </div>
-                  <Button onClick={analyzeReading} className="bg-chart-2 text-white hover:bg-chart-2/90">
-                    Analyze My Reading
-                  </Button>
-                </div>
-              )}
+              {/* Recording Complete */}
+              <AnimatePresence>
+                {hasRecorded && !isRecording && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    className="text-center"
+                  >
+                    <motion.div
+                      className="flex items-center justify-center gap-2 text-green-600 mb-4"
+                      animate={{ scale: [1, 1.1, 1] }}
+                      transition={{ duration: 0.5 }}
+                    >
+                      <CheckCircle className="w-6 h-6" />
+                      <span className="font-semibold">Recording complete! Ready for analysis.</span>
+                    </motion.div>
+                    <Button
+                      onClick={analyzeReading}
+                      className="bg-gradient-to-r from-chart-2 to-chart-2/80 hover:from-chart-2/90 hover:to-chart-2 text-white px-6 py-2"
+                    >
+                      <Zap className="w-4 h-4 mr-2" />
+                      Analyze My Reading
+                    </Button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
-            {/* Transcript */}
-            <div className="mt-6">
+            {/* Enhanced Transcript Section */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="mt-6"
+            >
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-balance">Live Transcript</CardTitle>
-                  <CardDescription>Captured locally in your browser</CardDescription>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-balance flex items-center gap-2">
+                        {isRecording ? (
+                          <motion.div
+                            animate={{ rotate: 360 }}
+                            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                          >
+                            <Mic className="w-5 h-5 text-red-600" />
+                          </motion.div>
+                        ) : (
+                          <Languages className="w-5 h-5" />
+                        )}
+                        {isRecording ? "Live Transcript" : "Your Transcript"}
+                      </CardTitle>
+                      <CardDescription>
+                        {isRecording
+                          ? "Real-time speech-to-text with live analysis"
+                          : "Your recorded speech converted to text"
+                        }
+                      </CardDescription>
+                    </div>
+                    {transcript && (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={copyTranscriptToClipboard}
+                          className="hover:bg-primary/5"
+                        >
+                          <Copy className="w-4 h-4 mr-1" />
+                          Copy
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={downloadTranscript}
+                          className="hover:bg-primary/5"
+                        >
+                          <Download className="w-4 h-4 mr-1" />
+                          Download
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-sm p-3 rounded border bg-background min-h-[80px] whitespace-pre-wrap">
-                    {transcript || (isRecording ? "(Listening...)" : "(Click Start Reading to capture your voice)")}
-                  </div>
+                  <ScrollArea className="h-32 w-full rounded-md border p-4">
+                    <div className="text-sm whitespace-pre-wrap leading-relaxed">
+                      <AnimatePresence mode="wait">
+                        {liveTranscript ? (
+                          <motion.div
+                            key="transcript"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                          >
+                            {isRecording && (
+                              <span className="inline-block w-2 h-4 bg-red-600 ml-1 animate-pulse mr-1" />
+                            )}
+                            {liveTranscript}
+                          </motion.div>
+                        ) : (
+                          <motion.div
+                            key="placeholder"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            className="text-muted-foreground italic"
+                          >
+                            {isRecording
+                              ? "🎤 Listening... Start speaking to see your words appear here"
+                              : "📝 Click 'Start Reading' to begin recording your voice"
+                            }
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </ScrollArea>
+
+                  {/* Live Pronunciation Feedback */}
+                  {voiceSettings.showAnalysis && liveAnalysis && liveAnalysis.feedback.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      className="mt-4 pt-4 border-t"
+                    >
+                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                        <Star className="w-4 h-4 text-yellow-600" />
+                        Pronunciation Tips
+                      </h4>
+                      <div className="space-y-2">
+                        {liveAnalysis.feedback.slice(0, 3).map((feedback, index) => (
+                          <motion.div
+                            key={index}
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: index * 0.1 }}
+                            className={`text-xs p-2 rounded flex items-center gap-2 ${
+                              feedback.score >= 80
+                                ? "bg-green-50 text-green-700 border border-green-200"
+                                : feedback.score >= 60
+                                ? "bg-yellow-50 text-yellow-700 border border-yellow-200"
+                                : "bg-red-50 text-red-700 border border-red-200"
+                            }`}
+                          >
+                            {feedback.score >= 80 ? (
+                              <CheckCircle className="w-3 h-3 flex-shrink-0" />
+                            ) : (
+                              <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                            )}
+                            <span>
+                              <strong>"{feedback.word}"</strong>: {feedback.suggestion || "Good pronunciation!"}
+                            </span>
+                          </motion.div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
                 </CardContent>
               </Card>
-            </div>
+            </motion.div>
           </CardContent>
         </Card>
 
-        {/* Tips */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm text-balance">Reading Tips</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid md:grid-cols-3 gap-4 text-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-primary rounded-full"></div>
-                <span>Read at a comfortable pace</span>
+        {/* Enhanced Tips */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          <Card className="bg-gradient-to-r from-primary/5 to-accent/5 border-primary/20">
+            <CardHeader>
+              <CardTitle className="text-sm text-balance flex items-center gap-2">
+                <BookOpen className="w-4 h-4" />
+                Reading Tips
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid md:grid-cols-3 gap-4 text-sm">
+                <motion.div
+                  className="flex items-center gap-3 p-3 bg-white/50 rounded-lg border border-primary/20"
+                  whileHover={{ scale: 1.02 }}
+                >
+                  <div className="w-2 h-2 bg-primary rounded-full flex-shrink-0"></div>
+                  <span>Read at a comfortable pace</span>
+                </motion.div>
+                <motion.div
+                  className="flex items-center gap-3 p-3 bg-white/50 rounded-lg border border-secondary/20"
+                  whileHover={{ scale: 1.02 }}
+                >
+                  <div className="w-2 h-2 bg-secondary rounded-full flex-shrink-0"></div>
+                  <span>Pronounce each word clearly</span>
+                </motion.div>
+                <motion.div
+                  className="flex items-center gap-3 p-3 bg-white/50 rounded-lg border border-accent/20"
+                  whileHover={{ scale: 1.02 }}
+                >
+                  <div className="w-2 h-2 bg-accent rounded-full flex-shrink-0"></div>
+                  <span>Don't worry about mistakes</span>
+                </motion.div>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-secondary rounded-full"></div>
-                <span>Pronounce each word clearly</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-accent rounded-full"></div>
-                <span>Don't worry about mistakes</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </motion.div>
       </div>
     )
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-12 h-12 bg-chart-2/10 rounded-xl flex items-center justify-center">
-            <Mic className="w-6 h-6 text-chart-2" />
-          </div>
+    <div className="max-w-6xl mx-auto p-4 md:p-6">
+      {/* Enhanced Header */}
+      <motion.div
+        initial={{ opacity: 0, y: -30 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-8"
+      >
+        <div className="flex items-center gap-4 mb-6">
+          <motion.div
+            className="w-16 h-16 bg-gradient-to-br from-primary to-accent rounded-2xl flex items-center justify-center shadow-lg"
+            whileHover={{ scale: 1.05, rotate: 5 }}
+            transition={{ type: "spring", stiffness: 300 }}
+          >
+            <Mic className="w-8 h-8 text-white" />
+          </motion.div>
           <div>
-            <h1 className="text-2xl font-bold text-balance">Voice Reading Assessment</h1>
-            <p className="text-muted-foreground">Practice reading aloud with live transcript, WPM and accuracy metrics</p>
+            <h1 className="text-3xl font-bold text-balance bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+              Voice Reading Assessment
+            </h1>
+            <p className="text-muted-foreground text-lg">
+              Practice reading aloud with AI-powered live transcript and pronunciation analysis
+            </p>
           </div>
         </div>
-      </div>
 
-      {/* Passage Selection */}
-      <div className="space-y-6">
-        <h2 className="text-xl font-semibold text-balance">Choose a Reading Passage</h2>
+        {/* Browser Compatibility Notice */}
+        {!isMicPermissionGranted && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                <AlertCircle className="w-4 h-4 text-blue-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-blue-900">Browser Compatibility</h3>
+                <p className="text-sm text-blue-700">
+                  This feature works best in Chrome, Edge, or Safari. Click "Start Reading" to grant microphone access.
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </motion.div>
 
-        <div className="grid gap-6">
-          {readingPassages.map((passage) => (
-            <Card key={passage.id} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => setSelectedPassage(passage)}>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-lg text-balance">{passage.title}</CardTitle>
-                    <CardDescription>Perfect for practicing {passage.focusAreas.join(", ").toLowerCase()}</CardDescription>
+      {/* Enhanced Passage Selection */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.2 }}
+        className="space-y-6"
+      >
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-balance mb-2">Choose Your Reading Challenge</h2>
+          <p className="text-muted-foreground">Select a passage that matches your reading level and goals</p>
+        </div>
+
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {readingPassages.map((passage, index) => (
+            <motion.div
+              key={passage.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.1 }}
+              whileHover={{ y: -4, scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <Card
+                className="h-full hover:shadow-xl transition-all duration-300 cursor-pointer border-2 hover:border-primary/30 group"
+                onClick={() => setSelectedPassage(passage)}
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 bg-gradient-to-br from-primary/20 to-accent/20 rounded-lg flex items-center justify-center group-hover:from-primary/30 group-hover:to-accent/30 transition-colors">
+                        <BookOpen className="w-4 h-4 text-primary" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-lg text-balance group-hover:text-primary transition-colors">
+                          {passage.title}
+                        </CardTitle>
+                        <Badge
+                          variant={passage.level === "beginner" ? "secondary" : passage.level === "intermediate" ? "default" : "outline"}
+                          className="capitalize mt-1"
+                        >
+                          {passage.level}
+                        </Badge>
+                      </div>
+                    </div>
                   </div>
-                  <Badge
-                    variant={passage.level === "beginner" ? "secondary" : passage.level === "intermediate" ? "default" : "outline"}
-                    className="capitalize"
-                  >
-                    {passage.level}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="mb-4">
-                  <p className="text-sm text-muted-foreground line-clamp-2 text-balance">{passage.text}</p>
-                </div>
+                  <CardDescription className="text-sm">
+                    Perfect for practicing {passage.focusAreas.join(", ").toLowerCase()}
+                  </CardDescription>
+                </CardHeader>
 
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-wrap gap-1">
-                    {passage.focusAreas.slice(0, 2).map((area, index) => (
-                      <Badge key={index} variant="outline" className="text-xs">
-                        {area}
-                      </Badge>
-                    ))}
+                <CardContent className="flex-1 flex flex-col">
+                  <div className="mb-4 flex-1">
+                    <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed">
+                      {passage.text}
+                    </p>
                   </div>
-                  <Button size="sm" className="bg-chart-2 text-white hover:bg-chart-2/90">
-                    <BookOpen className="w-4 h-4 mr-2" />
-                    Start Reading
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap gap-1">
+                      {passage.focusAreas.map((area, areaIndex) => (
+                        <Badge key={areaIndex} variant="outline" className="text-xs bg-primary/5">
+                          {area}
+                        </Badge>
+                      ))}
+                    </div>
+
+                    <Button
+                      className="w-full bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-white shadow-md hover:shadow-lg transition-all duration-300 group-hover:scale-105"
+                      size="sm"
+                    >
+                      <Mic className="w-4 h-4 mr-2" />
+                      Start Reading
+                      <motion.div
+                        className="ml-2"
+                        animate={{ x: [0, 4, 0] }}
+                        transition={{ duration: 1.5, repeat: Infinity }}
+                      >
+                        →
+                      </motion.div>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
           ))}
         </div>
-      </div>
+      </motion.div>
 
       {/* How it Works */}
       <Card className="mt-8">

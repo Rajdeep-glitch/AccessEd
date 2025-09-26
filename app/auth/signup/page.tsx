@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useToast } from "@/components/ui/use-toast"
 
 export default function SignUpPage() {
   const [formData, setFormData] = useState({
@@ -23,39 +23,50 @@ export default function SignUpPage() {
     age: "",
     agreedToTerms: false,
   })
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const router = useRouter()
+  const { toast } = useToast()
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
     if (formData.password !== formData.confirmPassword) {
-      alert("Passwords don't match!")
+      toast({ title: "Passwords do not match", variant: "destructive" })
       return
     }
     if (!formData.agreedToTerms) {
-      alert("Please agree to the terms and conditions")
+      toast({ title: "Please agree to the terms and conditions", variant: "destructive" })
       return
     }
 
     setIsLoading(true)
 
-    // Simulate account creation
-    setTimeout(() => {
-      setIsLoading(false)
-      const fullName = `${formData.firstName} ${formData.lastName}`
-      localStorage.setItem(
-        "user",
-        JSON.stringify({
-          name: fullName,
-          email: formData.email,
-          role: formData.userType,
-        }),
-      )
-      localStorage.setItem("isAuthenticated", "true")
+    try {
+      const base = process.env.NEXT_PUBLIC_API_URL || ""
+      const body = new FormData()
+      body.append("name", `${formData.firstName} ${formData.lastName}`)
+      body.append("email", formData.email)
+      body.append("password", formData.password)
+      if (photoFile) body.append("photo", photoFile)
+
+      const resp = await fetch(`${base}/api/auth/register`, {
+        method: "POST",
+        body,
+        credentials: "include",
+      })
+      const data = await resp.json()
+      if (!resp.ok || !data?.user) {
+        toast({ title: "Sign up failed", description: data?.error || "Please try again.", variant: "destructive" })
+        setIsLoading(false)
+        return
+      }
+      toast({ title: "Welcome to AccessEd!", description: "Your account was created." })
       window.location.href = "/"
-    }, 2000)
+    } catch {
+      toast({ title: "Network error", description: "Please try again.", variant: "destructive" })
+      setIsLoading(false)
+    }
   }
 
   const updateFormData = (field: string, value: string | boolean) => {
@@ -130,6 +141,19 @@ export default function SignUpPage() {
                   value={formData.email}
                   onChange={(e) => updateFormData("email", e.target.value)}
                   required
+                  className="h-12 text-base"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="photo" className="text-sm font-medium">
+                  Profile Photo (optional)
+                </Label>
+                <Input
+                  id="photo"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setPhotoFile(e.target.files?.[0] || null)}
                   className="h-12 text-base"
                 />
               </div>

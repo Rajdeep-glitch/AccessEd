@@ -19,56 +19,21 @@ type WordItem = { word: string; emoji?: string }
 
 type RoundTarget = {
   type: TargetType
-  // canonical answer id used for comparison
   answer: string
-  // label shown in option
   label: string
-  // text to speak (phoneme or word)
   speakText: string
 }
+
+type VibrateNavigator = Navigator & { vibrate?: (pattern: number | number[]) => boolean }
 
 const VOWELS = new Set(["A", "E", "I", "O", "U"])
 
 const LETTERS: LetterItem[] = [
-  { char: "A", phoneme: "a" },
-  { char: "B", phoneme: "b" },
-  { char: "C", phoneme: "c" },
-  { char: "D", phoneme: "d" },
-  { char: "E", phoneme: "e" },
-  { char: "F", phoneme: "f" },
-  { char: "G", phoneme: "g" },
-  { char: "H", phoneme: "h" },
-  { char: "I", phoneme: "i" },
-  { char: "J", phoneme: "j" },
-  { char: "K", phoneme: "k" },
-  { char: "L", phoneme: "l" },
-  { char: "M", phoneme: "m" },
-  { char: "N", phoneme: "n" },
-  { char: "O", phoneme: "o" },
-  { char: "P", phoneme: "p" },
-  { char: "Q", phoneme: "q" },
-  { char: "R", phoneme: "r" },
-  { char: "S", phoneme: "s" },
-  { char: "T", phoneme: "t" },
-  { char: "U", phoneme: "u" },
-  { char: "V", phoneme: "v" },
-  { char: "W", phoneme: "w" },
-  { char: "X", phoneme: "x" },
-  { char: "Y", phoneme: "y" },
-  { char: "Z", phoneme: "z" },
+  { char: "A", phoneme: "a" }, { char: "B", phoneme: "b" }, { char: "C", phoneme: "c" }, { char: "D", phoneme: "d" }, { char: "E", phoneme: "e" }, { char: "F", phoneme: "f" }, { char: "G", phoneme: "g" }, { char: "H", phoneme: "h" }, { char: "I", phoneme: "i" }, { char: "J", phoneme: "j" }, { char: "K", phoneme: "k" }, { char: "L", phoneme: "l" }, { char: "M", phoneme: "m" }, { char: "N", phoneme: "n" }, { char: "O", phoneme: "o" }, { char: "P", phoneme: "p" }, { char: "Q", phoneme: "q" }, { char: "R", phoneme: "r" }, { char: "S", phoneme: "s" }, { char: "T", phoneme: "t" }, { char: "U", phoneme: "u" }, { char: "V", phoneme: "v" }, { char: "W", phoneme: "w" }, { char: "X", phoneme: "x" }, { char: "Y", phoneme: "y" }, { char: "Z", phoneme: "z" },
 ]
 
 const WORDS: WordItem[] = [
-  { word: "cat", emoji: "🐱" },
-  { word: "dog", emoji: "🐶" },
-  { word: "sun", emoji: "☀️" },
-  { word: "bus", emoji: "🚌" },
-  { word: "hat", emoji: "👒" },
-  { word: "bed", emoji: "🛏️" },
-  { word: "bell", emoji: "🔔" },
-  { word: "fish", emoji: "🐟" },
-  { word: "milk", emoji: "🥛" },
-  { word: "book", emoji: "📘" },
+  { word: "cat", emoji: "🐱" }, { word: "dog", emoji: "🐶" }, { word: "sun", emoji: "☀️" }, { word: "bus", emoji: "🚌" }, { word: "hat", emoji: "👒" }, { word: "bed", emoji: "🛏️" }, { word: "bell", emoji: "🔔" }, { word: "fish", emoji: "🐟" }, { word: "milk", emoji: "🥛" }, { word: "book", emoji: "📘" },
 ]
 
 function shuffle<T>(arr: T[]): T[] {
@@ -86,7 +51,6 @@ function pick<T>(arr: T[], n: number): T[] {
 
 function speak(text: string, rate = 1) {
   try {
-    // Stop any queued utterances
     window.speechSynthesis.cancel()
     const u = new SpeechSynthesisUtterance(text)
     u.rate = rate
@@ -97,8 +61,9 @@ function speak(text: string, rate = 1) {
 
 function vibrate(ms: number) {
   try {
-    if (typeof navigator !== "undefined" && (navigator as any).vibrate) {
-      ;(navigator as any).vibrate(ms)
+    if (typeof navigator !== "undefined") {
+      const nav = navigator as VibrateNavigator
+      nav.vibrate?.(ms)
     }
   } catch {}
 }
@@ -117,7 +82,6 @@ export default function SoundMatch() {
 
   const timerRef = useRef<number | null>(null)
 
-  // Load persisted best and level
   useEffect(() => {
     try {
       const bs = parseInt(localStorage.getItem("soundMatch.bestScore") || "", 10)
@@ -127,7 +91,6 @@ export default function SoundMatch() {
     } catch {}
   }, [])
 
-  // Persist helpers
   const persistBest = useCallback((val: number) => {
     try { localStorage.setItem("soundMatch.bestScore", String(val)) } catch {}
   }, [])
@@ -135,105 +98,51 @@ export default function SoundMatch() {
     try { localStorage.setItem("soundMatch.level", String(val)) } catch {}
   }, [])
 
-  // Time per round decreases as level rises
-  const timePerRound = useMemo(() => {
-    // Level 1: 10s, down to min 4s by level 8+
-    return Math.max(4, 10 - Math.floor(level / 1.5))
-  }, [level])
-
-  // Option count 3–4
+  const timePerRound = useMemo(() => Math.max(4, 10 - Math.floor(level / 1.5)), [level])
   const optionCount = useMemo(() => (level >= 3 ? 4 : 3), [level])
-
   const currentType: TargetType = useMemo(() => {
     if (level <= 1) return "letter"
     if (level === 2) return "word"
     return "picture"
   }, [level])
 
-  // Generate a new round
   const buildRound = useCallback(() => {
+    // ... (buildRound logic is unchanged)
     let correct: RoundTarget
     let opts: RoundTarget[]
-
     if (currentType === "letter") {
       const correctLetter = pick(LETTERS, 1)[0]
-      correct = {
-        type: "letter",
-        answer: correctLetter.char,
-        label: correctLetter.char,
-        speakText: correctLetter.phoneme,
-      }
-      const distractors = pick(
-        LETTERS.filter((l) => l.char !== correctLetter.char),
-        optionCount - 1
-      ).map<RoundTarget>((l) => ({ type: "letter", answer: l.char, label: l.char, speakText: l.phoneme }))
+      correct = { type: "letter", answer: correctLetter.char, label: correctLetter.char, speakText: correctLetter.phoneme, }
+      const distractors = pick(LETTERS.filter((l) => l.char !== correctLetter.char), optionCount - 1).map<RoundTarget>((l) => ({ type: "letter", answer: l.char, label: l.char, speakText: l.phoneme }))
       opts = shuffle([correct, ...distractors])
     } else if (currentType === "word") {
       const correctWord = pick(WORDS, 1)[0]
-      correct = {
-        type: "word",
-        answer: correctWord.word,
-        label: correctWord.word,
-        speakText: correctWord.word,
-      }
-      const distractors = pick(
-        WORDS.filter((w) => w.word !== correctWord.word),
-        optionCount - 1
-      ).map<RoundTarget>((w) => ({ type: "word", answer: w.word, label: w.word, speakText: w.word }))
+      correct = { type: "word", answer: correctWord.word, label: correctWord.word, speakText: correctWord.word, }
+      const distractors = pick(WORDS.filter((w) => w.word !== correctWord.word), optionCount - 1).map<RoundTarget>((w) => ({ type: "word", answer: w.word, label: w.word, speakText: w.word }))
       opts = shuffle([correct, ...distractors])
     } else {
-      // picture + word association
       const correctWord = pick(WORDS, 1)[0]
-      correct = {
-        type: "picture",
-        answer: correctWord.word,
-        label: `${correctWord.emoji ?? ""} ${correctWord.word}`.trim(),
-        speakText: correctWord.word,
-      }
-      const distractors = pick(
-        WORDS.filter((w) => w.word !== correctWord.word),
-        optionCount - 1
-      ).map<RoundTarget>((w) => ({
-        type: "picture",
-        answer: w.word,
-        label: `${w.emoji ?? ""} ${w.word}`.trim(),
-        speakText: w.word,
-      }))
+      correct = { type: "picture", answer: correctWord.word, label: `${correctWord.emoji ?? ""} ${correctWord.word}`.trim(), speakText: correctWord.word, }
+      const distractors = pick(WORDS.filter((w) => w.word !== correctWord.word), optionCount - 1).map<RoundTarget>((w) => ({ type: "picture", answer: w.word, label: `${w.emoji ?? ""} ${w.word}`.trim(), speakText: w.word }))
       opts = shuffle([correct, ...distractors])
     }
-
     setTarget(correct)
     setOptions(opts)
     setTimeLeft(timePerRound)
     setIsRunning(true)
-
-    // autoplay prompt
     setTimeout(() => speak(correct.speakText, 1), 200)
   }, [currentType, optionCount, timePerRound])
 
-  // Start first round and whenever round increments
+  // **THE FIX**: This effect now ONLY runs when the `round` number changes.
+  // This prevents a level-up from prematurely triggering a new round.
   useEffect(() => {
+    setFeedback(null)
     buildRound()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [round, currentType])
-
-  // Timer effect
-  useEffect(() => {
-    if (!isRunning) return
-    if (timeLeft <= 0) {
-      // time out → treat as wrong
-      handleSelect(null)
-      return
-    }
-    timerRef.current = window.setTimeout(() => setTimeLeft((t) => t - 1), 1000)
-    return () => {
-      if (timerRef.current) window.clearTimeout(timerRef.current)
-    }
-  }, [isRunning, timeLeft])
+  }, [round])
 
   const levelUpIfNeeded = useCallback((newScore: number) => {
-    // Simple progression: every 5 correct rounds => level up
-    const computedLevel = Math.max(1, Math.floor(newScore / 50) + 1) // +1 level per 50 points
+    const computedLevel = Math.max(1, Math.floor(newScore / 50) + 1)
     if (computedLevel !== level) {
       setLevel(computedLevel)
       persistLevel(computedLevel)
@@ -241,11 +150,15 @@ export default function SoundMatch() {
   }, [level, persistLevel])
 
   const handleSelect = useCallback((answer: string | null) => {
-    if (!target) return
+    if (feedback !== null || !isRunning) return
 
-    const correct = answer !== null && answer === target.answer
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current)
+    }
 
-    if (correct) {
+    const isCorrect = answer !== null && answer === target?.answer
+
+    if (isCorrect) {
       setFeedback("correct")
       const newScore = score + 10
       setScore(newScore)
@@ -254,32 +167,41 @@ export default function SoundMatch() {
         persistBest(newScore)
       }
       levelUpIfNeeded(newScore)
-      setTimeout(() => {
-        setFeedback(null)
-        setRound((r) => r + 1)
-      }, 400)
+      setTimeout(() => setRound((r) => r + 1), 400)
     } else {
       setFeedback("wrong")
       vibrate(120)
-      speak(target.speakText, 0.9) // replay slower on wrong
+      if (target) {
+        speak(target.speakText, 0.9)
+      }
       const newLives = lives - 1
       setLives(newLives)
       if (newLives <= 0) {
         setIsRunning(false)
       } else {
-        setTimeout(() => {
-          setFeedback(null)
-          setRound((r) => r + 1)
-        }, 500)
+        setTimeout(() => setRound((r) => r + 1), 500)
       }
     }
-  }, [bestScore, levelUpIfNeeded, lives, persistBest, score, target])
+  }, [feedback, isRunning, target, score, bestScore, lives, persistBest, levelUpIfNeeded])
 
+  useEffect(() => {
+    if (!isRunning || timeLeft <= 0) return
+    timerRef.current = window.setTimeout(() => setTimeLeft((t) => t - 1), 1000)
+    return () => {
+      if (timerRef.current) window.clearTimeout(timerRef.current)
+    }
+  }, [isRunning, timeLeft])
+
+  useEffect(() => {
+    if (isRunning && timeLeft <= 0) {
+      handleSelect(null)
+    }
+  }, [isRunning, timeLeft, handleSelect])
+  
   const restart = () => {
     setScore(0)
     setLives(3)
     setRound((r) => r + 1)
-    setFeedback(null)
     setIsRunning(true)
   }
 
@@ -306,7 +228,6 @@ export default function SoundMatch() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Playback controls */}
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" variant="secondary" onClick={() => target && speak(target.speakText, 0.85)}>
               🔉 Slow
@@ -319,34 +240,30 @@ export default function SoundMatch() {
             </Button>
           </div>
 
-          {/* Timer */}
           <div>
             <Progress value={(timeLeft / timePerRound) * 100} className="h-2" />
             <div className="text-xs text-muted-foreground mt-1">Time left: {timeLeft}s</div>
           </div>
 
-          {/* Options */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {options.map((opt) => (
               <button
                 key={opt.answer}
                 onClick={() => handleSelect(opt.answer)}
-                className={`p-4 rounded-lg border text-center hover:shadow transition ${
-                  feedback && opt.answer === target?.answer && feedback === "correct" ? "border-green-500 bg-green-50" : ""
-                } ${feedback && opt.answer !== target?.answer && feedback === "wrong" ? "opacity-70" : ""}`}
+                disabled={feedback !== null}
+                className={`p-4 rounded-lg border text-center transition hover:shadow disabled:opacity-70 disabled:cursor-not-allowed ${
+                  feedback === "correct" && opt.answer === target?.answer ? "border-green-500 bg-green-50" : ""
+                } ${feedback === "wrong" && opt.answer === target?.answer ? "border-red-500 bg-red-50" : ""}`}
               >
                 {opt.type === "letter" ? (
                   <span className={`text-2xl ${colorClassForLetter(opt.label)}`}>{opt.label}</span>
                 ) : (
-                  <span className="text-lg">
-                    {opt.label}
-                  </span>
+                  <span className="text-lg">{opt.label}</span>
                 )}
               </button>
             ))}
           </div>
 
-          {/* Game over + actions */}
           {!isRunning && lives <= 0 && (
             <div className="p-4 rounded-md border bg-muted/40">
               <div className="font-semibold mb-2">Game Over</div>
@@ -357,7 +274,6 @@ export default function SoundMatch() {
             </div>
           )}
 
-          {/* Tip */}
           <p className="text-sm text-muted-foreground">
             Tip: Letters are color-coded (vowels highlighted). Use Slow/Play/Fast to hear the sound clearly.
           </p>

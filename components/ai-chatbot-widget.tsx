@@ -75,7 +75,7 @@ export default function AIChatbotWidget() {
         timestamp: new Date(),
       }
       setMessages((prev) => [...prev, botResponse])
-    } catch (err) {
+    } catch {
       const botResponse: Message = {
         id: (Date.now() + 1).toString(),
         content: 'There was an error contacting the AI service. Please try again.',
@@ -86,11 +86,6 @@ export default function AIChatbotWidget() {
     } finally {
       setIsTyping(false)
     }
-  }
-
-  // Deprecated: canned responses replaced by Gemini backend.
-  const generateAIResponse = (_userInput: string): string => {
-    return ""
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -116,21 +111,26 @@ export default function AIChatbotWidget() {
   return (
     <Card
       className={cn(
-        "fixed bottom-6 right-6 shadow-2xl border-0 bg-card/95 backdrop-blur-sm z-50 transition-all duration-300",
-        isMinimized ? "w-80 h-16" : "w-96 h-[500px]",
+        "fixed bottom-6 right-6 shadow-2xl border-0 bg-card/95 backdrop-blur-lg z-50 transition-all duration-300 gamification-card",
+        isMinimized ? "w-80 h-16 rounded-2xl" : "w-96 h-[500px] rounded-2xl",
       )}
       style={{ maxHeight: '80vh' }}
     >
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 border-b">
-        <CardTitle className="text-lg flex items-center gap-2">
-          <span className="text-primary">🤖</span>
-          AI Learning Assistant
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b bg-gradient-to-r from-primary/5 to-accent/5 rounded-t-2xl">
+        <CardTitle className="text-lg flex items-center gap-3">
+          <div className="w-10 h-10 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center animate-pulse-glow">
+            <span className="text-lg">🤖</span>
+          </div>
+          <div>
+            <div className="font-semibold">AI Learning Assistant</div>
+            <div className="text-xs text-muted-foreground">Always here to help</div>
+          </div>
         </CardTitle>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setIsMinimized(!isMinimized)}>
+          <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-primary/10 transition-colors" onClick={() => setIsMinimized(!isMinimized)}>
             {isMinimized ? <span>⬆️</span> : <span>⬇️</span>}
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setIsOpen(false)}>
+          <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-destructive/10 transition-colors" onClick={() => setIsOpen(false)}>
             <span>✕</span>
           </Button>
         </div>
@@ -146,40 +146,42 @@ export default function AIChatbotWidget() {
                   className={cn("flex gap-3", message.sender === "user" ? "justify-end" : "justify-start")}
                 >
                   {message.sender === "bot" && (
-                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      <span className="text-primary">🤖</span>
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center flex-shrink-0 shadow-md">
+                      <span className="text-white text-sm">🤖</span>
                     </div>
                   )}
                   <div
                     className={cn(
-                      "max-w-[280px] rounded-lg px-3 py-2 text-sm",
-                      message.sender === "user" ? "bg-primary text-primary-foreground" : "bg-muted",
+                      "max-w-[280px] rounded-2xl px-4 py-3 text-sm shadow-md transform transition-all duration-200 hover:scale-105",
+                      message.sender === "user"
+                        ? "bg-gradient-to-r from-primary to-accent text-white ml-12"
+                        : "bg-gradient-to-r from-muted to-muted/80 text-foreground mr-12",
                     )}
                   >
                     {message.content}
                   </div>
                   {message.sender === "user" && (
-                    <div className="w-8 h-8 rounded-full bg-secondary/10 flex items-center justify-center flex-shrink-0">
-                      <span className="text-secondary">👤</span>
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-secondary to-secondary/80 flex items-center justify-center flex-shrink-0 shadow-md">
+                      <span className="text-white text-sm">👤</span>
                     </div>
                   )}
                 </div>
               ))}
 
               {isTyping && (
-                <div className="flex gap-3 justify-start">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <span className="text-primary">🤖</span>
+                <div className="flex gap-3 justify-start animate-slide-in-up">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center flex-shrink-0 shadow-md">
+                    <span className="text-white text-sm">🤖</span>
                   </div>
-                  <div className="bg-muted rounded-lg px-3 py-2 text-sm">
+                  <div className="bg-gradient-to-r from-muted to-muted/80 rounded-2xl px-4 py-3 text-sm shadow-md mr-12">
                     <div className="flex gap-1">
-                      <div className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" />
+                      <div className="w-2 h-2 bg-primary rounded-full animate-bounce" />
                       <div
-                        className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce"
+                        className="w-2 h-2 bg-primary rounded-full animate-bounce"
                         style={{ animationDelay: "0.1s" }}
                       />
                       <div
-                        className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce"
+                        className="w-2 h-2 bg-primary rounded-full animate-bounce"
                         style={{ animationDelay: "0.2s" }}
                       />
                     </div>
@@ -190,17 +192,22 @@ export default function AIChatbotWidget() {
             </div>
           </ScrollArea>
 
-          <div className="p-4 border-t">
-            <div className="flex gap-2">
+          <div className="p-4 border-t bg-gradient-to-r from-background to-muted/20 rounded-b-2xl">
+            <div className="flex gap-3">
               <Input
                 placeholder="Ask me anything about learning..."
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
-                className="flex-1"
+                className="flex-1 rounded-full border-2 focus:border-primary transition-colors bg-background/50 backdrop-blur-sm"
               />
-              <Button onClick={handleSendMessage} disabled={!inputMessage.trim() || isTyping} size="icon">
-                <span>📤</span>
+              <Button
+                onClick={handleSendMessage}
+                disabled={!inputMessage.trim() || isTyping}
+                size="icon"
+                className="rounded-full bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 shadow-lg transform hover:scale-110 transition-all duration-200"
+              >
+                <span className="text-lg">📤</span>
               </Button>
             </div>
           </div>

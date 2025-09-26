@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-// Using Gemini REST API directly
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent'
+
+const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
 export async function POST(req: NextRequest) {
   try {
@@ -65,8 +65,8 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ text })
-  } catch (err: any) {
-    const msg = typeof err?.message === 'string' ? err.message : String(err)
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
     return NextResponse.json({ text: `There was a server error contacting the AI service. Details: ${msg}` }, { status: 200 })
   }
 }

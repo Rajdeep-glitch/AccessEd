@@ -130,7 +130,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex-1">
                     <CardTitle className="text-lg">Rhyme Radar</CardTitle>
-                    <CardDescription>Find the word that doesn't rhyme - against the clock!</CardDescription>
+                    <CardDescription>Find the word that doesn&apos;t rhyme - against the clock!</CardDescription>
                   </div>
                 </div>
               </CardHeader>
@@ -352,7 +352,7 @@ export default function DashboardPage() {
                     </div>
                     <div className="flex-1">
                       <CardTitle className="text-lg">Rhyme Radar</CardTitle>
-                      <CardDescription>Find the word that doesn't rhyme!</CardDescription>
+                      <CardDescription>Find the word that doesn&apos;t rhyme!</CardDescription>
                     </div>
                     <Button size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90">
                       Play

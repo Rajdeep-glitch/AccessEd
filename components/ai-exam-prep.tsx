@@ -134,8 +134,8 @@ export default function ExamPrep() {
       })
       const data = await resp.json()
       return data?.text || ''
-    } catch (e: any) {
-      return `Error: ${e?.message || 'failed to reach service'}`
+    } catch (e: unknown) {
+      return `Error: ${e instanceof Error ? e.message : 'failed to reach service'}`
     }
   }
 
@@ -377,7 +377,7 @@ export default function ExamPrep() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Brain className="w-5 h-5" />
-                  Today's Study Plan
+                  Today&apos;s Study Plan
                 </CardTitle>
                 <CardDescription>Personalized based on your learning patterns and weak areas</CardDescription>
               </CardHeader>
@@ -462,8 +462,8 @@ export default function ExamPrep() {
                 <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
                   <Lightbulb className="w-5 h-5 text-yellow-600 mt-0.5" />
                   <div className="text-sm">
-                    <p className="font-medium mb-1">Focus on 'ie/ei' patterns</p>
-                    <p className="text-muted-foreground">You've struggled with these in recent exercises</p>
+                    <p className="font-medium mb-1">Focus on &apos;ie/ei&apos; patterns</p>
+                    <p className="text-muted-foreground">You&apos;ve struggled with these in recent exercises</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">

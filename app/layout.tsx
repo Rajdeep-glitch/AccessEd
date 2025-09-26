@@ -4,6 +4,8 @@ import { Inter } from "next/font/google"
 import "./globals.css"
 import AIChatbotWidget from "@/components/ai-chatbot-widget"
 import { Suspense } from "react"
+import { ThemeProvider } from "@/components/theme-provider"
+import PageTransition from "@/components/shared/page"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -23,12 +25,16 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
-      <body className={`font-sans ${inter.variable} antialiased`}>
-        <Suspense fallback={null}>
-          {children}
-          <AIChatbotWidget />
-        </Suspense>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`font-sans ${inter.variable} antialiased`} suppressHydrationWarning>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+          <Suspense fallback={null}>
+            <PageTransition>
+              {children}
+            </PageTransition>
+            <AIChatbotWidget />
+          </Suspense>
+        </ThemeProvider>
       </body>
     </html>
   )

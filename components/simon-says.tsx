@@ -34,7 +34,7 @@ function useAudio() {
 
   const init = () => {
     if (!ctxRef.current) {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const ctx = new (window.AudioContext || (window as unknown as any).webkitAudioContext)()
       const gain = ctx.createGain()
       gain.gain.value = 0.04
       gain.connect(ctx.destination)
