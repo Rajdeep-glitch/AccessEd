@@ -57,6 +57,16 @@ export default function RhymeRadarGame() {
   const [highScore, setHighScore] = useState(85)
   const [gameComplete, setGameComplete] = useState(false)
 
+  const currentLevel = currentSet + 1
+
+  const endGame = useCallback(() => {
+    setGameActive(false)
+    setGameComplete(true)
+    if (score > highScore) {
+      setHighScore(score)
+    }
+  }, [score, highScore])
+
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>
     if (gameActive && timeLeft > 0 && !showResult) {
@@ -102,22 +112,17 @@ export default function RhymeRadarGame() {
 
   const nextRound = () => {
     if (currentSet < rhymeSets.length - 1) {
-      setCurrentSet(currentSet + 1)
+      const nextSetIndex = currentSet + 1
+      const upcomingLevel = nextSetIndex + 1
+
+      setCurrentSet(nextSetIndex)
       setSelectedWord(null)
       setShowResult(false)
-      setTimeLeft(Math.max(15, 30 - currentLevel * 2)) // Decrease time as level increases
+      setTimeLeft(Math.max(15, 30 - upcomingLevel * 2)) // Decrease time as level increases
     } else {
       endGame()
     }
   }
-
-  const endGame = useCallback(() => {
-    setGameActive(false)
-    setGameComplete(true)
-    if (score > highScore) {
-      setHighScore(score)
-    }
-  }, [score, highScore])
 
   const resetGame = () => {
     setGameActive(false)
@@ -151,7 +156,7 @@ export default function RhymeRadarGame() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-balance">Rhyme Radar</h1>
-            <p className="text-muted-foreground">Find the word that doesn't rhyme!</p>
+            <p className="text-muted-foreground">Find the word that doesn&apos;t rhyme!</p>
           </div>
         </div>
 
@@ -189,7 +194,7 @@ export default function RhymeRadarGame() {
           <CardHeader>
             <CardTitle className="text-xl text-balance">Ready to Play Rhyme Radar?</CardTitle>
             <CardDescription>
-              Listen to the words and find the one that doesn't rhyme with the others. You have limited time!
+              Listen to the words and find the one that doesn&apos;t rhyme with the others. You have limited time!
             </CardDescription>
           </CardHeader>
           <CardContent className="py-8">
@@ -264,7 +269,7 @@ export default function RhymeRadarGame() {
           {/* Game Area */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-center text-balance">Which word doesn't rhyme?</CardTitle>
+              <CardTitle className="text-center text-balance">Which word doesn&apos;t rhyme?</CardTitle>
               <CardDescription className="text-center">
                 Click on the word that sounds different from the others
               </CardDescription>
@@ -293,15 +298,30 @@ export default function RhymeRadarGame() {
                     <div className="flex items-center gap-3">
                       <span className="text-balance">{word}</span>
                       <Button
+                        asChild
                         variant="ghost"
                         size="sm"
-                        className="p-1 h-auto"
+                        className="p-1 h-auto cursor-pointer"
                         onClick={(e) => {
                           e.stopPropagation()
                           speakWord(word)
                         }}
                       >
-                        <span className="text-lg">🔊</span>
+                        <span
+                          className="text-lg"
+                          tabIndex={0}
+                          role="button"
+                          aria-label={`Hear ${word}`}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              speakWord(word)
+                            }
+                          }}
+                        >
+                          🔊
+                        </span>
                       </Button>
                     </div>
                     {showResult && selectedWord === index && (
